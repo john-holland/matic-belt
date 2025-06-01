@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bat Belt - Donation Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://js.squareup.com/v2/paymentform"></script>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold mb-8 text-center">Support Bat Belt</h1>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Credit Balance -->
+            <div class="bg-gray-800 p-6 rounded-lg">
+                <h2 class="text-2xl font-semibold mb-4">Your Credits</h2>
+                <p class="text-3xl font-bold text-green-400" id="creditBalance">100</p>
+                <p class="text-gray-400 mt-2">Initial credits provided</p>
+            </div>
+
+            <!-- Donation Options -->
+            <div class="bg-gray-800 p-6 rounded-lg">
+                <h2 class="text-2xl font-semibold mb-4">Donation Options</h2>
+                <div class="space-y-4">
+                    <button id="squareDonate" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
+                        Donate with Square
+                    </button>
+                    <button id="cryptoDonate" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                        Donate with Crypto
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Square Payment Form (Hidden by default) -->
+        <div id="squareForm" class="hidden mt-8 bg-gray-800 p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">Square Payment</h3>
+            <form id="payment-form">
+                <div id="card-container"></div>
+                <button id="card-button" type="button" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
+                    Pay with Square
+                </button>
+            </form>
+        </div>
+
+        <!-- Crypto Payment Form (Hidden by default) -->
+        <div id="cryptoForm" class="hidden mt-8 bg-gray-800 p-6 rounded-lg">
+            <h3 class="text-xl font-semibold mb-4">Crypto Payment</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400">Amount (ETH)</label>
+                    <input type="number" id="cryptoAmount" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400">Your Ethereum Address</label>
+                    <input type="text" id="fromAddress" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400">Recipient Address</label>
+                    <input type="text" id="toAddress" value="0x..." readonly class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2">
+                </div>
+                <button id="sendCrypto" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                    Send Payment
+                </button>
+            </div>
+        </div>
+
+        <!-- Transaction History -->
+        <div class="mt-8 bg-gray-800 p-6 rounded-lg">
+            <h2 class="text-2xl font-semibold mb-4">Transaction History</h2>
+            <div id="transactionList" class="space-y-4">
+                <!-- Transactions will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Square Payment Form
+        const squarePaymentForm = new SqPaymentForm({
+            applicationId: 'YOUR_SQUARE_APP_ID',
+            locationId: 'YOUR_SQUARE_LOCATION_ID',
+            inputClass: 'sq-input',
+            cardNumber: {
+                elementId: 'sq-card-number',
+                placeholder: 'Card Number'
+            },
+            cvv: {
+                elementId: 'sq-cvv',
+                placeholder: 'CVV'
+            },
+            expirationDate: {
+                elementId: 'sq-expiration-date',
+                placeholder: 'MM/YY'
+            },
+            postalCode: {
+                elementId: 'sq-postal-code',
+                placeholder: 'Postal Code'
+            },
+            callbacks: {
+                cardBrandChanged: function(event) {
+                    // Handle card brand change
+                },
+                errorChanged: function(event) {
+                    // Handle errors
+                },
+                paymentFormLoaded: function() {
+                    // Payment form loaded
+                }
+            }
+        });
+
+        // Initialize Web3
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+
+        // Event Listeners
+        document.getElementById('squareDonate').addEventListener('click', () => {
+            document.getElementById('squareForm').classList.remove('hidden');
+            document.getElementById('cryptoForm').classList.add('hidden');
+        });
+
+        document.getElementById('cryptoDonate').addEventListener('click', () => {
+            document.getElementById('cryptoForm').classList.remove('hidden');
+            document.getElementById('squareForm').classList.add('hidden');
+        });
+
+        document.getElementById('card-button').addEventListener('click', async () => {
+            try {
+                const result = await squarePaymentForm.requestCardNonce();
+                if (result.error) {
+                    throw new Error(result.error.message);
+                }
+                // Send nonce to server
+                await sendSquarePayment(result.nonce);
+            } catch (error) {
+                console.error('Payment failed:', error);
+            }
+        });
+
+        document.getElementById('sendCrypto').addEventListener('click', async () => {
+            try {
+                const amount = document.getElementById('cryptoAmount').value;
+                const fromAddress = document.getElementById('fromAddress').value;
+                const toAddress = document.getElementById('toAddress').value;
+
+                const tx = await signer.sendTransaction({
+                    to: toAddress,
+                    value: ethers.utils.parseEther(amount)
+                });
+
+                await tx.wait();
+                await sendCryptoPayment(tx.hash);
+            } catch (error) {
+                console.error('Crypto payment failed:', error);
+            }
+        });
+
+        // Helper Functions
+        async function sendSquarePayment(nonce) {
+            const response = await fetch('/api/donate/square', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ nonce })
+            });
+            const result = await response.json();
+            updateTransactionHistory(result);
+        }
+
+        async function sendCryptoPayment(txHash) {
+            const response = await fetch('/api/donate/crypto', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ txHash })
+            });
+            const result = await response.json();
+            updateTransactionHistory(result);
+        }
+
+        function updateTransactionHistory(transaction) {
+            const transactionList = document.getElementById('transactionList');
+            const transactionElement = document.createElement('div');
+            transactionElement.className = 'bg-gray-700 p-4 rounded';
+            transactionElement.innerHTML = `
+                <p class="font-semibold">${transaction.type}</p>
+                <p class="text-gray-400">Amount: ${transaction.amount}</p>
+                <p class="text-gray-400">Status: ${transaction.status}</p>
+                <p class="text-gray-400">Date: ${new Date(transaction.timestamp).toLocaleString()}</p>
+            `;
+            transactionList.prepend(transactionElement);
+        }
+
+        // Load initial data
+        async function loadInitialData() {
+            try {
+                const response = await fetch('/api/credits');
+                const data = await response.json();
+                document.getElementById('creditBalance').textContent = data.balance;
+
+                const transactionsResponse = await fetch('/api/transactions');
+                const transactions = await transactionsResponse.json();
+                transactions.forEach(updateTransactionHistory);
+            } catch (error) {
+                console.error('Failed to load initial data:', error);
+            }
+        }
+
+        loadInitialData();
+    </script>
+</body>
+</html> 

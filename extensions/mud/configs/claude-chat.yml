@@ -1,0 +1,64 @@
+version: "1.0"
+name: "Claude Chat Automation"
+description: "Automated chat interaction with Claude through browser"
+
+browser:
+  headless: false
+  viewport:
+    width: 1280
+    height: 800
+  timeout: 30000
+
+variables:
+  CLAUDE_URL: "https://claude.ai/chat"
+  MAX_RETRIES: "3"
+
+steps:
+  - name: "Initialize Chat"
+    ai:
+      type: "claude"
+      url: ${CLAUDE_URL}
+      selectors:
+        input: "textarea[placeholder='Message Claude...']"
+        submit: "button[aria-label='Send message']"
+        response: "div[data-message-author='assistant']"
+        error: "div[role='alert']"
+      waitFor:
+        - "textarea[placeholder='Message Claude...']"
+        - "button[aria-label='Send message']"
+      retryAttempts: ${MAX_RETRIES}
+      retryDelay: 1000
+
+  - name: "Send Initial Prompt"
+    ai:
+      type: "claude"
+      url: ${CLAUDE_URL}
+      selectors:
+        input: "textarea[placeholder='Message Claude...']"
+        submit: "button[aria-label='Send message']"
+        response: "div[data-message-author='assistant']"
+    input: "Hello! I'm an AI assistant. How can I help you today?"
+    validate:
+      type: "contains"
+      value: "Hello"
+    saveResponse: "initial_response"
+
+  - name: "Process User Input"
+    ai:
+      type: "claude"
+      url: ${CLAUDE_URL}
+      selectors:
+        input: "textarea[placeholder='Message Claude...']"
+        submit: "button[aria-label='Send message']"
+        response: "div[data-message-author='assistant']"
+    input: ${user_input}
+    timeout: 60000
+    retryOnFailure: true
+    validate:
+      type: "regex"
+      value: ".*"
+
+onError:
+  retry: true
+  maxAttempts: 3
+  delay: 5000 

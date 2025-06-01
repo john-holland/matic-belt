@@ -1,0 +1,29 @@
+---
+- name: Memory Examiner Service Setup and Testing
+  hosts: localhost
+  gather_facts: yes
+  tasks:
+    - name: Install dependencies
+      command: npm install
+      args:
+        chdir: "{{ playbook_dir }}/.."
+
+    - name: Build the project
+      command: npm run build
+      args:
+        chdir: "{{ playbook_dir }}/.."
+
+    - name: Run all tests
+      command: npm test
+      args:
+        chdir: "{{ playbook_dir }}/.."
+
+    - name: Run performance tests
+      command: npm run test:perf
+      args:
+        chdir: "{{ playbook_dir }}/.."
+
+    - name: Run the example
+      command: npm run example
+      args:
+        chdir: "{{ playbook_dir }}/.." 

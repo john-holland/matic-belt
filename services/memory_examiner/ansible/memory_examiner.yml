@@ -1,0 +1,78 @@
+---
+- name: Deploy Memory Examiner Service
+  hosts: all
+  become: yes
+  vars:
+    memory_examiner_version: "1.0.0"
+    install_dir: "/opt/memory-examiner"
+    node_version: "16.x"
+    npm_registry: "https://registry.npmjs.org/"
+
+  tasks:
+    - name: Install system dependencies
+      package:
+        name:
+          - build-essential
+          - python3
+          - nodejs
+          - npm
+        state: present
+        update_cache: yes
+
+    - name: Install Node.js version manager
+      shell: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      args:
+        creates: "{{ ansible_env.HOME }}/.nvm"
+
+    - name: Install specific Node.js version
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        nvm install {{ node_version }}
+      args:
+        creates: "{{ ansible_env.HOME }}/.nvm/versions/node/{{ node_version }}"
+
+    - name: Create application directory
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy application files
+      copy:
+        src: "{{ playbook_dir }}/../"
+        dest: "{{ install_dir }}"
+        mode: '0755'
+
+    - name: Install npm dependencies
+      npm:
+        path: "{{ install_dir }}"
+        state: present
+        registry: "{{ npm_registry }}"
+
+    - name: Build application
+      shell: |
+        cd {{ install_dir }}
+        npm run build
+      args:
+        creates: "{{ install_dir }}/dist"
+
+    - name: Run performance tests
+      shell: |
+        cd {{ install_dir }}
+        ./scripts/run-perf-tests.sh
+      register: test_results
+      changed_when: false
+
+    - name: Create systemd service
+      template:
+        src: memory_examiner.service.j2
+        dest: /etc/systemd/system/memory-examiner.service
+        mode: '0644'
+
+    - name: Enable and start service
+      systemd:
+        name: memory-examiner
+        state: started
+        enabled: yes
+        daemon_reload: yes 

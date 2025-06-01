@@ -1,0 +1,66 @@
+{
+  "name": "bat-belt-scanner",
+  "displayName": "Bat Belt Scanner",
+  "description": "AR-based scanner with WiFi mapping and 3D visualization for VSCode",
+  "version": "1.0.0",
+  "publisher": "bat-belt",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:bat-belt-scanner.startScanning",
+    "onCommand:bat-belt-scanner.stopScanning",
+    "onCommand:bat-belt-scanner.connectToMUD"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "bat-belt-scanner.startScanning",
+        "title": "Start Scanner"
+      },
+      {
+        "command": "bat-belt-scanner.stopScanning",
+        "title": "Stop Scanner"
+      },
+      {
+        "command": "bat-belt-scanner.connectToMUD",
+        "title": "Connect to MUD"
+      }
+    ],
+    "configuration": {
+      "title": "Bat Belt Scanner",
+      "properties": {
+        "batBeltScanner.mudServerUrl": {
+          "type": "string",
+          "default": "http://localhost:3001",
+          "description": "MUD server URL"
+        },
+        "batBeltScanner.scanInterval": {
+          "type": "number",
+          "default": 5000,
+          "description": "Scan interval in milliseconds"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  }
+} 

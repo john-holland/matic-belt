@@ -1,0 +1,64 @@
+version: "1.0"
+name: "Gemini Chat Automation"
+description: "Automated chat interaction with Gemini through browser"
+
+browser:
+  headless: false
+  viewport:
+    width: 1280
+    height: 800
+  timeout: 30000
+
+variables:
+  GEMINI_URL: "https://gemini.google.com/chat"
+  MAX_RETRIES: "3"
+
+steps:
+  - name: "Initialize Chat"
+    ai:
+      type: "gemini"
+      url: ${GEMINI_URL}
+      selectors:
+        input: "textarea[aria-label='Chat input']"
+        submit: "button[aria-label='Send message']"
+        response: "div[data-message-author='model']"
+        error: "div[role='alert']"
+      waitFor:
+        - "textarea[aria-label='Chat input']"
+        - "button[aria-label='Send message']"
+      retryAttempts: ${MAX_RETRIES}
+      retryDelay: 1000
+
+  - name: "Send Initial Prompt"
+    ai:
+      type: "gemini"
+      url: ${GEMINI_URL}
+      selectors:
+        input: "textarea[aria-label='Chat input']"
+        submit: "button[aria-label='Send message']"
+        response: "div[data-message-author='model']"
+    input: "Hello! I'm an AI assistant. How can I help you today?"
+    validate:
+      type: "contains"
+      value: "Hello"
+    saveResponse: "initial_response"
+
+  - name: "Process User Input"
+    ai:
+      type: "gemini"
+      url: ${GEMINI_URL}
+      selectors:
+        input: "textarea[aria-label='Chat input']"
+        submit: "button[aria-label='Send message']"
+        response: "div[data-message-author='model']"
+    input: ${user_input}
+    timeout: 60000
+    retryOnFailure: true
+    validate:
+      type: "regex"
+      value: ".*"
+
+onError:
+  retry: true
+  maxAttempts: 3
+  delay: 5000 

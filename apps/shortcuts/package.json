@@ -1,0 +1,26 @@
+{
+  "name": "system-shortcuts",
+  "version": "1.0.0",
+  "description": "System shortcuts launcher with global hotkeys",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "tsc",
+    "watch": "tsc -w",
+    "dev": "npm run build && electron .",
+    "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win",
+    "package:linux": "npm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "electron": "^29.1.0",
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/electron": "^1.6.10",
+    "typescript": "^5.3.3",
+    "electron-builder": "^24.13.3"
+  }
+} 

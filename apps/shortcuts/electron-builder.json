@@ -1,0 +1,21 @@
+{
+  "appId": "com.system.shortcuts",
+  "productName": "System Shortcuts",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "dist/**/*",
+    "package.json"
+  ],
+  "mac": {
+    "category": "public.app-category.utilities",
+    "target": ["dmg", "zip"]
+  },
+  "win": {
+    "target": ["nsis", "portable"]
+  },
+  "linux": {
+    "target": ["AppImage", "deb"]
+  }
+} 

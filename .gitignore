@@ -21,6 +21,30 @@ tmp_pack_*
 **/Electron.app/
 **/libtensorflow.*.dylib
 
+# Large assets
+*.rar
+*.zip
+*.7z
+*.tar
+*.gz
+*.bz2
+*.xz
+*.iso
+*.img
+*.vmdk
+*.vhd
+*.vhdx
+*.qcow2
+*.raw
+*.bin
+*.dat
+*.dump
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+
 # OS files
 .DS_Store
 .DS_Store?

@@ -1,15 +1,19 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import { Octokit } from '@octokit/rest';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import OpenAI from 'openai';
+import { OpenAI } from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { chromium } from 'playwright';
+import { SpeechTracker } from './speech-tracker';
+import { WeatherTimeService } from './services/weather-time';
+import { AutoLogEvent } from './types/auto-log-event';
+import { AudioChat, AudioChatMessage } from './audio-chat';
 
 interface AIUser {
     id: string;
-    type: 'gemini' | 'claude' | 'gpt4';
+    type: string;
     credits: number;
     friends: string[];
 }
@@ -32,10 +36,16 @@ class MUDServer {
     private browser: any;
     private aiUsers: Map<string, AIUser> = new Map();
     private messageQueue: MUDMessage[] = [];
+    private speechTracker: SpeechTracker;
+    private weatherTimeService: WeatherTimeService;
+    private audioChat: AudioChat;
 
     constructor() {
         this.initializeGitHub();
         this.initializeAI();
+        this.speechTracker = new SpeechTracker();
+        this.weatherTimeService = new WeatherTimeService();
+        this.audioChat = new AudioChat();
         this.setupSocketHandlers();
         this.setupRoutes();
     }
@@ -65,7 +75,7 @@ class MUDServer {
     }
 
     private setupSocketHandlers() {
-        this.io.on('connection', (socket) => {
+        this.io.on('connection', (socket: Socket) => {
             console.log('Client connected:', socket.id);
 
             socket.on('initialize', () => {
@@ -76,6 +86,65 @@ class MUDServer {
                 await this.handleCommand(socket, command);
             });
 
+            socket.on('speech', async (data: { userId: string, content: string, context?: Record<string, any> }) => {
+                try {
+                    const entry = await this.speechTracker.trackSpeech(data.userId, data.content, data.context);
+                    socket.emit('speech_tracked', {
+                        id: entry.id,
+                        timestamp: entry.timestamp
+                    });
+
+                    // Handle audio chat messages
+                    await this.audioChat.handleMessage(data.userId, data.content);
+
+                    // Set up auto-log event listener for this socket
+                    const autoLogHandler = (event: AutoLogEvent) => {
+                        let message: MUDMessage | undefined;
+                        switch (event.type) {
+                            case 'weather':
+                                message = {
+                                    type: 'system',
+                                    content: `🌤️ Current weather in ${event.data.city}: ${event.data.temperature}°C, ${event.data.description}. Humidity: ${event.data.humidity}%, Wind: ${event.data.windSpeed} m/s`,
+                                    timestamp: event.timestamp
+                                };
+                                break;
+                            case 'time':
+                                message = {
+                                    type: 'system',
+                                    content: `🕒 Current time (${event.data.timezone}): ${event.data.currentTime}`,
+                                    timestamp: event.timestamp
+                                };
+                                break;
+                            case 'weather-time':
+                                message = {
+                                    type: 'system',
+                                    content: `🌤️ Weather in ${event.data.weather.city}: ${event.data.weather.temperature}°C, ${event.data.weather.description}\n🕒 Time (${event.data.time.timezone}): ${event.data.time.currentTime}`,
+                                    timestamp: event.timestamp
+                                };
+                                break;
+                        }
+                        if (message) {
+                            socket.emit('message', message);
+                        }
+                    };
+
+                    // Add the event listener
+                    this.speechTracker.on('autoLog', autoLogHandler);
+
+                    // Remove the event listener when the socket disconnects
+                    socket.on('disconnect', () => {
+                        this.speechTracker.removeListener('autoLog', autoLogHandler);
+                    });
+                } catch (error) {
+                    socket.emit('error', { message: 'Failed to track speech' });
+                }
+            });
+
+            // Set up audio chat message handler
+            this.audioChat.on('message', (message: AudioChatMessage) => {
+                socket.emit('audio_message', message);
+            });
+
             socket.on('disconnect', () => {
                 console.log('Client disconnected:', socket.id);
             });
@@ -83,8 +152,65 @@ class MUDServer {
     }
 
     private setupRoutes() {
-        this.app.get('/health', (req, res) => {
+        this.app.get('/health', (req: Request, res: Response) => {
             res.json({ status: 'ok' });
+        });
+
+        // Weather endpoint
+        this.app.get('/weather', async (req: Request, res: Response) => {
+            try {
+                const lat = parseFloat(req.query.lat as string);
+                const lon = parseFloat(req.query.lon as string);
+                const city = req.query.city as string;
+
+                const location = !isNaN(lat) && !isNaN(lon) ? { lat, lon, city: city || 'Unknown' } : undefined;
+                const weather = await this.weatherTimeService.getWeather(location);
+                res.json(weather);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch weather data' });
+            }
+        });
+
+        // Time endpoint
+        this.app.get('/time', (req: Request, res: Response) => {
+            try {
+                const timezone = req.query.timezone as string;
+                const lat = parseFloat(req.query.lat as string);
+                const lon = parseFloat(req.query.lon as string);
+
+                let timeInfo;
+                if (timezone) {
+                    timeInfo = this.weatherTimeService.getTime(timezone);
+                } else if (!isNaN(lat) && !isNaN(lon)) {
+                    timeInfo = this.weatherTimeService.getTimeForLocation({ lat, lon });
+                } else {
+                    timeInfo = this.weatherTimeService.getTime();
+                }
+
+                res.json(timeInfo);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch time data' });
+            }
+        });
+
+        // Combined weather and time endpoint
+        this.app.get('/weather-time', async (req: Request, res: Response) => {
+            try {
+                const lat = parseFloat(req.query.lat as string);
+                const lon = parseFloat(req.query.lon as string);
+                const city = req.query.city as string;
+                const timezone = req.query.timezone as string;
+
+                const location = !isNaN(lat) && !isNaN(lon) ? { lat, lon, city: city || 'Unknown' } : undefined;
+                const [weather, time] = await Promise.all([
+                    this.weatherTimeService.getWeather(location),
+                    this.weatherTimeService.getTime(timezone)
+                ]);
+
+                res.json({ weather, time });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch weather and time data' });
+            }
         });
     }
 

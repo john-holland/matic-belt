@@ -1,0 +1,158 @@
+{
+    "name": "Magical Castle",
+    "nodes": [
+        {
+            "id": "root",
+            "type": "empty",
+            "transform": {
+                "position": [0, 0, 0],
+                "rotation": [0, 0, 0],
+                "scale": [1, 1, 1]
+            },
+            "children": [
+                {
+                    "id": "castle",
+                    "type": "model",
+                    "asset": "castle_main",
+                    "transform": {
+                        "position": [0, 0, 0],
+                        "rotation": [0, 0, 0],
+                        "scale": [1, 1, 1]
+                    },
+                    "material": "castle_stone",
+                    "children": [
+                        {
+                            "id": "towers",
+                            "type": "model",
+                            "asset": "castle_towers",
+                            "transform": {
+                                "position": [0, 10, 0],
+                                "rotation": [0, 0, 0],
+                                "scale": [1, 1, 1]
+                            },
+                            "material": "castle_stone"
+                        },
+                        {
+                            "id": "portal",
+                            "type": "model",
+                            "asset": "magic_portal",
+                            "transform": {
+                                "position": [0, 2, 5],
+                                "rotation": [0, 0, 0],
+                                "scale": [2, 2, 2]
+                            },
+                            "material": "portal_effect"
+                        }
+                    ]
+                },
+                {
+                    "id": "ground",
+                    "type": "model",
+                    "asset": "terrain",
+                    "transform": {
+                        "position": [0, -1, 0],
+                        "rotation": [0, 0, 0],
+                        "scale": [50, 1, 50]
+                    },
+                    "material": "grass"
+                },
+                {
+                    "id": "particles",
+                    "type": "model",
+                    "asset": "magic_particles",
+                    "transform": {
+                        "position": [0, 5, 0],
+                        "rotation": [0, 0, 0],
+                        "scale": [1, 1, 1]
+                    },
+                    "material": "particle_effect"
+                }
+            ]
+        }
+    ],
+    "materials": [
+        {
+            "id": "castle_stone",
+            "type": "standard",
+            "properties": {
+                "color": "#8B8B8B",
+                "metalness": 0.1,
+                "roughness": 0.8,
+                "normalMap": "stone_normal",
+                "displacementMap": "stone_displacement",
+                "aoMap": "stone_ao"
+            }
+        },
+        {
+            "id": "portal_effect",
+            "type": "shader",
+            "shader": {
+                "vertex": "portal",
+                "fragment": "portal",
+                "uniforms": {
+                    "time": 0,
+                    "color": "#4A90E2"
+                }
+            }
+        },
+        {
+            "id": "grass",
+            "type": "standard",
+            "properties": {
+                "color": "#4CAF50",
+                "metalness": 0,
+                "roughness": 0.9,
+                "map": "grass_diffuse",
+                "normalMap": "grass_normal"
+            }
+        },
+        {
+            "id": "particle_effect",
+            "type": "shader",
+            "shader": {
+                "vertex": "particle",
+                "fragment": "particle",
+                "uniforms": {
+                    "time": 0,
+                    "color": "#FFD700"
+                }
+            }
+        }
+    ],
+    "animations": [
+        {
+            "id": "portal_rotation",
+            "target": "portal",
+            "type": "rotation",
+            "keyframes": [
+                {
+                    "time": 0,
+                    "value": [0, 0, 0],
+                    "easing": "linear"
+                },
+                {
+                    "time": 1,
+                    "value": [0, Math.PI * 2, 0],
+                    "easing": "linear"
+                }
+            ]
+        },
+        {
+            "id": "particle_float",
+            "target": "particles",
+            "type": "position",
+            "keyframes": [
+                {
+                    "time": 0,
+                    "value": [0, 5, 0],
+                    "easing": "easeInOutSine"
+                },
+                {
+                    "time": 1,
+                    "value": [0, 7, 0],
+                    "easing": "easeInOutSine"
+                }
+            ]
+        }
+    ]
+} 

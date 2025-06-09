@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  mud:
+    build:
+      context: .
+      dockerfile: extensions/mud/Dockerfile
+    volumes:
+      - ./extensions/mud:/app
+      - midi-cache:/app/cache/midi
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+    command: npm run dev
+
+volumes:
+  midi-cache:
+    driver: local 

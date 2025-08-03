@@ -1,0 +1,103 @@
+{
+  "scene": {
+    "nodes": [
+      {
+        "id": "root",
+        "type": "anchor",
+        "position": [0, 0, 0],
+        "rotation": [0, 0, 0, 1],
+        "scale": [1, 1, 1],
+        "attributes": {
+          "timestamp": 1680000000,
+          "gps": { "lat": 37.7749, "lon": -122.4194 },
+          "description": "Main entrance, facing north"
+        },
+        "children": [
+          {
+            "id": "wifi-gateway",
+            "type": "wifi-gateway",
+            "position": [2, 0, 0],
+            "attributes": {
+              "bssid": "00:11:22:33:44:55",
+              "ssid": "Gateway1",
+              "rssi": -45
+            }
+          },
+          {
+            "id": "user-device",
+            "type": "device",
+            "position": [1, 0, 0],
+            "rotation": [0, 0, 0, 1],
+            "attributes": {
+              "gyro": { "yaw": 0.1, "pitch": 0.05, "roll": 0.02 },
+              "cameraFrame": "base64encodedimage",
+              "features": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "errata": [
+    "WiFi RSSI values may fluctuate due to interference.",
+    "Camera frame may not be synchronized with gyro data in all cases.",
+    "GPS accuracy may be limited indoors."
+  ],
+  "todo": [
+    {
+      "task": "Implement ML model for scene re-identification using camera and WiFi data.",
+      "requirements": [
+        "Train model on combined visual and signal features.",
+        "Ensure compatibility with day-maker and dailiance scenegraph formats.",
+        "Support incremental learning for new environments."
+      ]
+    },
+    {
+      "task": "Stabilize camera feed using gyroscope data.",
+      "requirements": [
+        "Integrate real-time sensor fusion.",
+        "Test on multiple device types."
+      ]
+    },
+    {
+        "task": "Walk cat!",
+        "requirements": [
+            {
+                "type": "walk",
+                "duration": "5 minutes",
+                "phase": "required_work"
+            }
+        ]
+    },
+    {
+        "task": "do dishes!",
+        "requirements": [
+            {
+                "type": "use hands",
+                "duration": "1-20 minutes",
+                "phase": "required_work"
+            },
+            {
+                "type": "random barometer",
+                "duration": "1-20 minutes",
+                "phase": "required_work"
+            },
+            {
+                "type": "geopen to sink",
+                "duration": "1-20 minutes",
+                "phase": "required_work"
+            },
+            {
+                "type": "recognize: dishwasher",
+                "describe": "dishwasher",
+                "phase": "start"
+            },
+            {
+                "type": "recognize: empty sink",
+                "describe": "empty sink",
+                "phase": "complete"
+            }
+        ]
+    }
+  ]
+} 

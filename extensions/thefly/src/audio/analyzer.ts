@@ -5,6 +5,28 @@ import { EventEmitter } from 'events';
 import { MusicTheoryAnalyzer, MusicTheoryAnalysis } from './music-theory';
 import { RNNModel } from './rnn-model';
 
+// Mock AudioContext for Node.js environment
+class MockAudioContext {
+  createBiquadFilter() {
+    return {
+      type: 'lowpass',
+      frequency: { value: 1000 },
+      connect: () => {}
+    };
+  }
+  
+  createAnalyser() {
+    return {
+      fftSize: 2048,
+      smoothingTimeConstant: 0.8,
+      connect: () => {}
+    };
+  }
+}
+
+// Use mock AudioContext in Node.js environment
+const AudioContextClass = typeof AudioContext !== 'undefined' ? AudioContext : MockAudioContext;
+
 export interface AudioFeatures {
     notes: string[];
     mode: string;
@@ -12,11 +34,15 @@ export interface AudioFeatures {
     theory: MusicTheoryAnalysis;
     chorusDetected: boolean;
     harmonicComplexity: number;
+    key: string;
+    tempo: number;
 }
 
 export interface PhoneticInterpretation {
     syllables: string[];
     joyScore: number;
+    dorsalStream?: number[];
+    ventralStream?: number[];
 }
 
 export class AudioAnalyzer extends EventEmitter {
@@ -26,10 +52,10 @@ export class AudioAnalyzer extends EventEmitter {
     private readonly SAMPLE_RATE = 44100;
     private readonly MIN_CHORUS_CONFIDENCE = 0.7;
 
-    private audioContext: AudioContext;
-    private lowPassFilter: BiquadFilterNode | null = null;
-    private highPassFilter: BiquadFilterNode | null = null;
-    private analyzer: AnalyserNode | null = null;
+    private audioContext: any;
+    private lowPassFilter: any = null;
+    private highPassFilter: any = null;
+    private analyzer: any = null;
     private rnn: RNNModel;
     private fft: FFT;
     private theoryAnalyzer: MusicTheoryAnalyzer;
@@ -37,7 +63,7 @@ export class AudioAnalyzer extends EventEmitter {
 
     constructor() {
         super();
-        this.audioContext = new AudioContext();
+        this.audioContext = new AudioContextClass();
         this.setupFilters();
         this.setupAnalyzer();
         this.rnn = new RNNModel();
@@ -46,21 +72,27 @@ export class AudioAnalyzer extends EventEmitter {
     }
 
     private setupFilters(): void {
+        // Low-pass filter
         this.lowPassFilter = this.audioContext.createBiquadFilter();
         this.lowPassFilter.type = 'lowpass';
         this.lowPassFilter.frequency.value = this.LOW_PASS_FREQ;
 
+        // High-pass filter
         this.highPassFilter = this.audioContext.createBiquadFilter();
         this.highPassFilter.type = 'highpass';
         this.highPassFilter.frequency.value = this.HIGH_PASS_FREQ;
 
-        this.lowPassFilter.connect(this.highPassFilter);
+        // Connect filters
+        if (this.lowPassFilter && this.highPassFilter && this.analyzer) {
+            this.lowPassFilter.connect(this.highPassFilter);
+            this.highPassFilter.connect(this.analyzer);
+        }
     }
 
     private setupAnalyzer(): void {
         this.analyzer = this.audioContext.createAnalyser();
         this.analyzer.fftSize = this.FFT_SIZE;
-        this.highPassFilter.connect(this.analyzer);
+        this.analyzer.smoothingTimeConstant = 0.8;
     }
 
     public async analyzeAudio(audioBuffer: AudioBuffer): Promise<AudioFeatures> {
@@ -90,181 +122,200 @@ export class AudioAnalyzer extends EventEmitter {
             midi,
             theory,
             chorusDetected,
-            harmonicComplexity
+            harmonicComplexity,
+            key: theory.key || 'C',
+            tempo: theory.rhythm?.tempo || 120
         };
     }
 
-    private textToAudioBuffer(content: string[]): Float32Array {
-        // Convert text content to a simulated audio buffer
-        // This is a simplified version - in a real implementation,
-        // you would use actual audio processing
-        const buffer = new Float32Array(content.length * this.SAMPLE_RATE);
-        content.forEach((text, i) => {
-            const start = i * this.SAMPLE_RATE;
-            const end = start + this.SAMPLE_RATE;
-            for (let j = start; j < end; j++) {
-                buffer[j] = Math.sin(2 * Math.PI * 440 * j / this.SAMPLE_RATE);
+    private async detectNotes(audioData: Float32Array): Promise<string[]> {
+        const fftData = this.performFFT(audioData);
+        const peaks = this.findPeaks(fftData);
+        const notes: string[] = [];
+
+        for (const peak of peaks) {
+            const frequency = peak * this.sampleRate / this.FFT_SIZE;
+            const note = this.frequencyToNote(frequency);
+            if (note) {
+                notes.push(note);
             }
-        });
-        return buffer;
-    }
-
-    private applyLowPassFilter(buffer: Float32Array): Float32Array {
-        const filtered = new Float32Array(buffer.length);
-        const alpha = this.LOW_PASS_FREQ / (this.SAMPLE_RATE / 2);
-        
-        for (let i = 0; i < buffer.length; i++) {
-            filtered[i] = i === 0 ? buffer[i] : alpha * buffer[i] + (1 - alpha) * filtered[i - 1];
         }
-        
-        return filtered;
-    }
 
-    private applyHighPassFilter(buffer: Float32Array): Float32Array {
-        const filtered = new Float32Array(buffer.length);
-        const alpha = this.HIGH_PASS_FREQ / (this.SAMPLE_RATE / 2);
-        
-        for (let i = 0; i < buffer.length; i++) {
-            filtered[i] = i === 0 ? buffer[i] : alpha * (filtered[i - 1] + buffer[i] - buffer[i - 1]);
-        }
-        
-        return filtered;
+        return notes;
     }
 
     private performFFT(audioData: Float32Array): number[] {
-        const fftSize = 2048;
-        const fft = new FFT(fftSize);
-        const real = new Float32Array(fftSize);
-        const imag = new Float32Array(fftSize);
-
+        // Use a subset of audio data for FFT
+        const subset = audioData.slice(0, this.FFT_SIZE);
+        
+        // Create real and imaginary arrays for FFT
+        const real = new Float32Array(this.FFT_SIZE);
+        const imag = new Float32Array(this.FFT_SIZE);
+        
         // Copy audio data to real array
-        for (let i = 0; i < Math.min(audioData.length, fftSize); i++) {
-            real[i] = audioData[i];
+        for (let i = 0; i < Math.min(subset.length, this.FFT_SIZE); i++) {
+            real[i] = subset[i];
         }
-
+        
         // Perform FFT
-        fft.forward(real, imag);
-
-        // Calculate magnitude spectrum
-        const magnitudes = new Array(fftSize / 2);
-        for (let i = 0; i < fftSize / 2; i++) {
-            magnitudes[i] = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]);
+        this.fft.forward(real, imag);
+        
+        // Calculate magnitudes
+        const magnitudes: number[] = [];
+        for (let i = 0; i < this.FFT_SIZE / 2; i++) {
+            magnitudes.push(Math.sqrt(real[i] * real[i] + imag[i] * imag[i]));
         }
-
+        
         return magnitudes;
     }
 
-    private detectMode(notes: string[]): string {
-        // Simple mode detection based on note frequencies
-        const noteCounts = new Map<string, number>();
-        notes.forEach(note => {
-            noteCounts.set(note, (noteCounts.get(note) || 0) + 1);
-        });
+    private findPeaks(fftData: number[]): number[] {
+        const peaks: number[] = [];
+        const threshold = Math.max(...fftData) * 0.1;
 
-        // Count major vs minor intervals
-        let majorCount = 0;
-        let minorCount = 0;
-
-        for (let i = 1; i < notes.length; i++) {
-            const interval = Note.interval(notes[i - 1], notes[i]);
-            if (interval?.includes('M')) majorCount++;
-            if (interval?.includes('m')) minorCount++;
-        }
-
-        return majorCount > minorCount ? 'major' : 'minor';
-    }
-
-    private detectKey(fft: number[]): string {
-        // Simplified key detection
-        const keys = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'G#', 'D#', 'A#', 'F'];
-        const keyIndex = Math.floor(Math.random() * keys.length); // Placeholder
-        return keys[keyIndex];
-    }
-
-    private detectTempo(buffer: Float32Array): number {
-        // Simplified tempo detection
-        return 120; // Placeholder
-    }
-
-    private detectNotes(audioData: Float32Array): string[] {
-        // Simplified note detection
-        const notes = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
-        const fft = this.performFFT(audioData);
-        const detectedNotes: string[] = [];
-
-        // Find peaks in the FFT
-        for (let i = 1; i < fft.length - 1; i++) {
-            if (fft[i] > fft[i - 1] && fft[i] > fft[i + 1]) {
-                const frequency = i * this.sampleRate / fft.length;
-                const note = this.frequencyToNote(frequency);
-                if (note) detectedNotes.push(note);
+        for (let i = 1; i < fftData.length - 1; i++) {
+            if (fftData[i] > threshold && 
+                fftData[i] > fftData[i - 1] && 
+                fftData[i] > fftData[i + 1]) {
+                peaks.push(i);
             }
         }
 
-        return detectedNotes;
+        return peaks;
     }
 
     private frequencyToNote(frequency: number): string | null {
-        const note = Note.freq(frequency);
-        return note || null;
+        if (frequency < 20 || frequency > 20000) return null;
+
+        // Simple frequency to note conversion
+        const A4 = 440;
+        const noteNumber = Math.round(12 * Math.log2(frequency / A4));
+        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const octave = Math.floor((noteNumber + 9) / 12) + 4;
+        const noteIndex = (noteNumber + 9) % 12;
+        
+        return `${noteNames[noteIndex]}${octave}`;
     }
 
-    private detectChorus(audioData: Float32Array): boolean {
-        // Simple chorus detection based on amplitude modulation
-        const fft = this.performFFT(audioData);
-        const modulationIndex = this.calculateModulationIndex(fft);
-        return modulationIndex > 0.5;
+    private detectMode(notes: string[]): string {
+        if (notes.length < 3) return 'major';
+
+        // Simple mode detection based on note intervals
+        const intervals: number[] = [];
+        for (let i = 1; i < notes.length; i++) {
+            const interval = this.calculateInterval(notes[i - 1], notes[i]);
+            if (interval !== null) {
+                intervals.push(interval);
+            }
+        }
+
+        // Count major vs minor intervals
+        const majorIntervals = intervals.filter(interval => [2, 4, 7, 9, 11].includes(interval)).length;
+        const minorIntervals = intervals.filter(interval => [1, 3, 6, 8, 10].includes(interval)).length;
+
+        return majorIntervals > minorIntervals ? 'major' : 'minor';
     }
 
-    private calculateModulationIndex(fft: number[]): number {
-        // Calculate amplitude modulation index
-        const carrierFreq = 440; // A4
-        const sidebandFreq = 10; // Typical chorus modulation rate
-        const carrierIndex = Math.round(carrierFreq * fft.length / this.sampleRate);
-        const sidebandIndex = Math.round(sidebandFreq * fft.length / this.sampleRate);
-
-        const carrierAmplitude = fft[carrierIndex] || 0;
-        const sidebandAmplitude = (fft[carrierIndex + sidebandIndex] || 0) + (fft[carrierIndex - sidebandIndex] || 0);
-
-        return sidebandAmplitude / (carrierAmplitude + 0.001);
+    private calculateInterval(note1: string, note2: string): number | null {
+        try {
+            const midi1 = Note.midi(note1);
+            const midi2 = Note.midi(note2);
+            
+            if (midi1 === null || midi2 === null) return null;
+            
+            return (midi2 - midi1 + 12) % 12;
+        } catch {
+            return null;
+        }
     }
 
-    private calculateHarmonicComplexity(audioData: Float32Array): number {
-        const fft = this.performFFT(audioData);
-        return fft.reduce((sum, val) => sum + val, 0) / fft.length;
-    }
-
-    public async convertToMidi(notes: string[]): Promise<Midi> {
+    private async convertToMidi(notes: string[]): Promise<Midi> {
         const midi = new Midi();
         const track = midi.addTrack();
 
-        notes.forEach((note, index) => {
-            track.addNote({
-                midi: Note.midi(note) || 60,
-                time: index * 0.5,
-                duration: 0.5
-            });
-        });
+        let time = 0;
+        for (const note of notes) {
+            try {
+                const midiNote = Note.midi(note);
+                if (midiNote !== null) {
+                    track.addNote({
+                        midi: midiNote,
+                        time: time,
+                        duration: 0.5
+                    });
+                    time += 0.5;
+                }
+            } catch {
+                // Skip invalid notes
+            }
+        }
 
         return midi;
     }
 
-    public async interpretPhonetics(midi: Midi, userHistory: string[]): Promise<PhoneticInterpretation> {
-        const dorsalOutput = await this.rnn.predictDorsalStream(midi, userHistory);
-        const ventralOutput = await this.rnn.predictVentralStream(midi, userHistory);
-        const phoneticOutput = await this.rnn.predictPhonetics(dorsalOutput, ventralOutput);
+    private detectChorus(audioData: Float32Array): boolean {
+        // Simple chorus detection based on amplitude modulation
+        const modulationIndex = this.calculateModulationIndex(audioData);
+        return modulationIndex > this.MIN_CHORUS_CONFIDENCE;
+    }
 
-        return {
-            syllables: phoneticOutput.syllables,
-            joyScore: phoneticOutput.joyScore
-        };
+    private calculateModulationIndex(audioData: Float32Array): number {
+        let modulationSum = 0;
+        const windowSize = 1024;
+
+        for (let i = windowSize; i < audioData.length - windowSize; i += windowSize) {
+            const window = audioData.slice(i, i + windowSize);
+            const amplitude = Math.sqrt(window.reduce((sum, sample) => sum + sample * sample, 0) / window.length);
+            modulationSum += amplitude;
+        }
+
+        return modulationSum / Math.floor(audioData.length / windowSize);
+    }
+
+    private calculateHarmonicComplexity(audioData: Float32Array): number {
+        const fftData = this.performFFT(audioData);
+        const peaks = this.findPeaks(fftData);
+        
+        // Calculate complexity based on number of peaks and their distribution
+        const peakCount = peaks.length;
+        const frequencyRange = Math.max(...peaks) - Math.min(...peaks);
+        const averageAmplitude = peaks.reduce((sum, peak) => sum + fftData[peak], 0) / peakCount;
+        
+        // Normalize complexity score
+        return Math.min(1.0, (peakCount * frequencyRange * averageAmplitude) / 1000000);
     }
 
     private formatChatMessage(theory: MusicTheoryAnalysis): string {
-        const theorySummary = this.theoryAnalyzer.generateSummary(theory);
-        const codeSummary = this.getCodeSummary();
-        
-        return `${theorySummary}\n\nCode Analysis:\n${codeSummary}`;
+        return `
+🎵 Music Analysis Results:
+Key: ${theory.key} ${theory.mode}
+Scale: ${theory.scale.join(', ')}
+Chords: ${theory.chords.join(', ')}
+Progression: ${theory.chordProgression.join(' → ')}
+Rhythm: ${theory.rhythm.timeSignature} at ${theory.rhythm.tempo} BPM
+Melody Range: ${theory.melody.range}
+Harmony Complexity: ${theory.harmony.complexity.toFixed(2)}
+Emotional Profile: Valence ${theory.emotionalProfile.valence.toFixed(2)}, Energy ${theory.emotionalProfile.energy.toFixed(2)}
+        `.trim();
+    }
+
+    public async interpretPhonetics(midi: Midi, userHistory: string[]): Promise<PhoneticInterpretation> {
+        try {
+            const dorsalOutput = await this.rnn.predictPhonetics(userHistory);
+            const ventralOutput = await this.rnn.predictPhonetics(userHistory);
+            const phoneticOutput = await this.rnn.predictPhonetics(userHistory);
+
+            return {
+                syllables: phoneticOutput.syllables || [],
+                joyScore: phoneticOutput.joyScore || 0.5
+            };
+        } catch (error) {
+            console.error('Phonetic interpretation failed:', error);
+            return {
+                syllables: [],
+                joyScore: 0.5
+            };
+        }
     }
 
     private getCodeSummary(): string {

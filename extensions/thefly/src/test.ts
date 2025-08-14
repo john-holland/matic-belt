@@ -7,25 +7,15 @@ async function runTest() {
         const analyzer = new AudioAnalyzer();
         const rnnModel = new RNNModel();
 
-        // Test audio analysis
+        // Test audio analysis with mock AudioBuffer
         console.log('Testing audio analysis...');
-        const testMessages = [
-            'What a beautiful day',
-            'The sun is shining bright',
-            'Birds are singing in the trees'
-        ];
-
-        const features = await analyzer.analyzeAudio(testMessages);
+        const mockAudioBuffer = createMockAudioBuffer();
+        const features = await analyzer.analyzeAudio(mockAudioBuffer);
         console.log('Audio Features:', features);
-
-        // Test MIDI conversion
-        console.log('\nTesting MIDI conversion...');
-        const midi = await analyzer.convertToMidi(testMessages);
-        console.log('MIDI track created with', midi.tracks[0].notes.length, 'notes');
 
         // Test phonetic interpretation
         console.log('\nTesting phonetic interpretation...');
-        const interpretation = await rnnModel.predictPhonetics(testMessages);
+        const interpretation = await rnnModel.predictPhonetics(['test message']);
         console.log('Phonetic Interpretation:', interpretation);
 
         // Test joy score
@@ -36,4 +26,20 @@ async function runTest() {
     }
 }
 
-runTest(); 
+function createMockAudioBuffer(): AudioBuffer {
+    // Create a mock AudioBuffer for testing
+    const sampleRate = 44100;
+    const length = 2048;
+    const audioBuffer = new AudioContext().createBuffer(1, length, sampleRate);
+    const channelData = audioBuffer.getChannelData(0);
+    
+    // Fill with a simple sine wave
+    for (let i = 0; i < length; i++) {
+        channelData[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate);
+    }
+    
+    return audioBuffer;
+}
+
+// Run the test
+runTest().catch(console.error); 

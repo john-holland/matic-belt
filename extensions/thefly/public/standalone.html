@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TheFly Standalone - Audio Intelligence</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            color: #e8e8e8;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: 60px 1fr;
+            height: 100vh;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            background: rgba(0, 0, 0, 0.8);
+            border-bottom: 2px solid #00ff88;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.active {
+            background: #00ff88;
+        }
+
+        .sidebar {
+            background: rgba(0, 0, 0, 0.6);
+            border-right: 1px solid #333;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .main-content {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: #00ff88;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: #00cc6a;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .recordings-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .recording-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .recording-item:hover {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: #00ff88;
+        }
+
+        .recording-item.recording {
+            border-color: #ff4444;
+            background: rgba(255, 68, 68, 0.2);
+            animation: recording-pulse 1s infinite;
+        }
+
+        .recording-title {
+            font-weight: bold;
+            color: #00ff88;
+            margin-bottom: 5px;
+        }
+
+        .recording-info {
+            font-size: 12px;
+            color: #ccc;
+        }
+
+        .visualizer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00ff88;
+            border-radius: 10px;
+            padding: 20px;
+            min-width: 300px;
+        }
+
+        .analysis-panel {
+            margin-bottom: 20px;
+        }
+
+        .analysis-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00ff88;
+            margin-bottom: 10px;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .metric-label {
+            color: #ccc;
+        }
+
+        .metric-value {
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #00cc6a);
+            transition: width 0.3s ease;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes recording-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #00ff88;
+            color: #000;
+            padding: 15px 30px;
+            border-radius: 5px;
+            font-weight: bold;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .notification.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">🪰 TheFly Standalone</div>
+            <div class="status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </header>
+
+        <aside class="sidebar">
+            <div class="controls">
+                <button class="btn" id="startBtn">🎤 Start Listening</button>
+                <button class="btn" id="stopBtn" disabled>⏹️ Stop</button>
+            </div>
+
+            <div class="analysis-panel">
+                <div class="analysis-title">🎯 Interest Analysis</div>
+                <div class="metric">
+                    <span class="metric-label">Joy Score:</span>
+                    <span class="metric-value" id="joyScore">0.00</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="joyProgress" style="width: 0%"></div>
+                </div>
+
+                <div class="metric">
+                    <span class="metric-label">Harmonic Complexity:</span>
+                    <span class="metric-value" id="harmonicComplexity">0.00</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="harmonicProgress" style="width: 0%"></div>
+                </div>
+
+                <div class="metric">
+                    <span class="metric-label">Emotional Intensity:</span>
+                    <span class="metric-value" id="emotionalIntensity">0.00</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="emotionalProgress" style="width: 0%"></div>
+                </div>
+
+                <div class="metric">
+                    <span class="metric-label">Overall Interest:</span>
+                    <span class="metric-value" id="interestScore">0.00</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="interestProgress" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="recordings-list">
+                <div class="analysis-title">📁 Recordings</div>
+                <div id="recordingsList">
+                    <div class="recording-item">
+                        <div class="recording-title">No recordings yet</div>
+                        <div class="recording-info">Start listening to capture interesting audio</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="visualizer" id="visualizer"></div>
+            <div class="overlay">
+                <div class="analysis-title">🎵 Real-time Analysis</div>
+                <div class="metric">
+                    <span class="metric-label">Mode:</span>
+                    <span class="metric-value" id="mode">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Key:</span>
+                    <span class="metric-value" id="key">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Chorus:</span>
+                    <span class="metric-value" id="chorus">-</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Patterns:</span>
+                    <span class="metric-value" id="patterns">-</span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        class TheFlyUI {
+            constructor() {
+                this.socket = io();
+                this.isRecording = false;
+                this.currentAnalysis = null;
+                this.recordings = [];
+                this.setupEventListeners();
+                this.setupSocketHandlers();
+                this.setupVisualizer();
+            }
+
+            setupEventListeners() {
+                document.getElementById('startBtn').addEventListener('click', () => {
+                    this.startListening();
+                });
+
+                document.getElementById('stopBtn').addEventListener('click', () => {
+                    this.stopListening();
+                });
+            }
+
+            setupSocketHandlers() {
+                this.socket.on('connect', () => {
+                    this.updateStatus('Connected', true);
+                });
+
+                this.socket.on('disconnect', () => {
+                    this.updateStatus('Disconnected', false);
+                });
+
+                this.socket.on('status', (data) => {
+                    this.updateStatus(data.message, data.recording);
+                });
+
+                this.socket.on('analysis', (analysis) => {
+                    this.updateAnalysis(analysis);
+                });
+
+                this.socket.on('recordingStatus', (status) => {
+                    this.handleRecordingStatus(status);
+                });
+            }
+
+            setupVisualizer() {
+                const container = document.getElementById('visualizer');
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setClearColor(0x000000, 0);
+                container.appendChild(renderer.domElement);
+
+                // Create audio visualization
+                const geometry = new THREE.BufferGeometry();
+                const material = new THREE.LineBasicMaterial({ color: 0x00ff88 });
+                
+                const points = [];
+                for (let i = 0; i < 100; i++) {
+                    points.push(new THREE.Vector3(i * 0.1 - 5, 0, 0));
+                }
+                
+                geometry.setFromPoints(points);
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+
+                camera.position.z = 5;
+
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    
+                    // Animate based on current analysis
+                    if (this.currentAnalysis) {
+                        const frequencyData = this.currentAnalysis.frequencyData || [];
+                        points.forEach((point, i) => {
+                            const amplitude = frequencyData[i] || 0;
+                            point.y = amplitude * 0.1;
+                        });
+                        geometry.setFromPoints(points);
+                    }
+                    
+                    renderer.render(scene, camera);
+                };
+                
+                animate();
+
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                });
+            }
+
+            startListening() {
+                this.socket.emit('startAudio');
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                this.showNotification('🎤 Started listening for interesting sounds...');
+            }
+
+            stopListening() {
+                this.socket.emit('stopAudio');
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                this.showNotification('⏹️ Stopped listening');
+            }
+
+            updateStatus(message, isActive) {
+                document.getElementById('statusText').textContent = message;
+                const indicator = document.getElementById('statusIndicator');
+                indicator.classList.toggle('active', isActive);
+            }
+
+            updateAnalysis(analysis) {
+                this.currentAnalysis = analysis;
+                
+                // Update metrics
+                const joyScore = analysis.interpretation?.joyScore || 0;
+                const harmonicComplexity = analysis.harmonicComplexity || 0;
+                const emotionalIntensity = analysis.theory?.emotionalProfile?.energy || 0;
+                const interestScore = this.calculateInterestScore(analysis);
+
+                document.getElementById('joyScore').textContent = joyScore.toFixed(2);
+                document.getElementById('harmonicComplexity').textContent = harmonicComplexity.toFixed(2);
+                document.getElementById('emotionalIntensity').textContent = emotionalIntensity.toFixed(2);
+                document.getElementById('interestScore').textContent = interestScore.toFixed(2);
+
+                document.getElementById('joyProgress').style.width = `${joyScore * 100}%`;
+                document.getElementById('harmonicProgress').style.width = `${harmonicComplexity * 100}%`;
+                document.getElementById('emotionalProgress').style.width = `${emotionalIntensity * 100}%`;
+                document.getElementById('interestProgress').style.width = `${interestScore * 100}%`;
+
+                // Update other analysis data
+                document.getElementById('mode').textContent = analysis.mode || '-';
+                document.getElementById('key').textContent = analysis.theory?.key || '-';
+                document.getElementById('chorus').textContent = analysis.chorusDetected ? 'Yes' : 'No';
+                document.getElementById('patterns').textContent = this.detectPatterns(analysis);
+            }
+
+            calculateInterestScore(analysis) {
+                const joyScore = analysis.interpretation?.joyScore || 0;
+                const harmonicComplexity = analysis.harmonicComplexity || 0;
+                const chorusDetected = analysis.chorusDetected ? 1 : 0;
+                const emotionalIntensity = analysis.theory?.emotionalProfile?.energy || 0;
+
+                return (joyScore * 0.3 + harmonicComplexity * 0.2 + chorusDetected * 0.15 + emotionalIntensity * 0.35);
+            }
+
+            detectPatterns(analysis) {
+                const patterns = [];
+                if (analysis.theory?.harmony?.complexity > 0.8) patterns.push('Complex');
+                if (analysis.theory?.emotionalProfile?.energy > 0.9) patterns.push('Intense');
+                if (analysis.theory?.melody?.contour === 'unusual') patterns.push('Unusual');
+                return patterns.length > 0 ? patterns.join(', ') : 'Normal';
+            }
+
+            handleRecordingStatus(status) {
+                if (status.recording) {
+                    this.showNotification(`🎙️ Recording: ${status.reason} (${status.score.toFixed(2)})`);
+                    this.addRecordingItem(status.sessionId, status.reason, status.score);
+                } else {
+                    this.showNotification(`💾 Recording saved: ${status.duration}ms`);
+                    this.updateRecordingItem(status.sessionId, false);
+                }
+            }
+
+            addRecordingItem(id, reason, score) {
+                const recordingsList = document.getElementById('recordingsList');
+                const item = document.createElement('div');
+                item.className = 'recording-item recording';
+                item.id = `recording-${id}`;
+                item.innerHTML = `
+                    <div class="recording-title">Recording ${id.slice(-6)}</div>
+                    <div class="recording-info">${reason} (${score.toFixed(2)})</div>
+                `;
+                recordingsList.appendChild(item);
+            }
+
+            updateRecordingItem(id, isRecording) {
+                const item = document.getElementById(`recording-${id}`);
+                if (item) {
+                    item.classList.toggle('recording', isRecording);
+                }
+            }
+
+            showNotification(message) {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                notification.classList.add('show');
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }
+        }
+
+        // Initialize the UI when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new TheFlyUI();
+        });
+    </script>
+</body>
+</html> 

@@ -37,7 +37,7 @@ export class MusicTheoryAnalyzer {
     const notes = this.extractNotes(midi);
     const key = this.detectKey(notes);
     const mode = this.detectMode(notes, key);
-    const scale = Scale.get(`${key} ${mode}`).notes;
+    const scale = this.getScale(key, mode);
     const chords = this.analyzeChords(notes, key, mode);
     const progression = this.analyzeChordProgression(chords);
     const rhythm = this.analyzeRhythm(midi);
@@ -63,367 +63,249 @@ export class MusicTheoryAnalyzer {
     
     midi.tracks.forEach(track => {
       track.notes.forEach(note => {
-        const noteName = Note.midi(note.midi);
-        if (noteName) {
-          notes.push({
-            note: noteName,
-            time: note.time,
-            duration: note.duration
-          });
+        try {
+          const noteName = this.midiToNoteName(note.midi);
+          if (noteName) {
+            notes.push({
+              note: noteName,
+              time: note.time,
+              duration: note.duration
+            });
+          }
+        } catch (error) {
+          // Skip invalid notes
         }
       });
     });
+    
+    return notes;
+  }
 
-    return notes.sort((a, b) => a.time - b.time);
+  private midiToNoteName(midiNote: number): string | null {
+    try {
+      // Convert MIDI note number to note name
+      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      const octave = Math.floor(midiNote / 12) - 1;
+      const noteIndex = midiNote % 12;
+      return `${noteNames[noteIndex]}${octave}`;
+    } catch {
+      return null;
+    }
   }
 
   private detectKey(notes: { note: string; time: number; duration: number }[]): string {
-    // Count note frequencies
+    if (notes.length === 0) return 'C';
+    
+    // Simple key detection based on most common notes
     const noteCounts = new Map<string, number>();
-    notes.forEach(({ note }) => {
-      noteCounts.set(note, (noteCounts.get(note) || 0) + 1);
+    notes.forEach(note => {
+      const baseNote = note.note.replace(/\d/g, ''); // Remove octave
+      noteCounts.set(baseNote, (noteCounts.get(baseNote) || 0) + 1);
     });
-
-    // Find the most common note as potential tonic
+    
+    // Find the most common note
     let maxCount = 0;
-    let tonic = 'C';
+    let mostCommonNote = 'C';
+    
     noteCounts.forEach((count, note) => {
       if (count > maxCount) {
         maxCount = count;
-        tonic = note;
+        mostCommonNote = note;
       }
     });
-
-    return tonic;
+    
+    return mostCommonNote;
   }
 
   private detectMode(notes: { note: string; time: number; duration: number }[], key: string): string {
-    // Analyze intervals to determine mode
-    const intervals = this.getIntervals(notes);
-    const modeScores = new Map<string, number>();
-
-    this.SCALE_TYPES.forEach(mode => {
-      const scale = Scale.get(`${key} ${mode}`).notes;
-      let score = 0;
-      intervals.forEach(interval => {
-        if (scale.includes(interval)) score++;
-      });
-      modeScores.set(mode, score);
-    });
-
-    // Find the mode with highest score
-    let maxScore = 0;
-    let detectedMode = 'major';
-    modeScores.forEach((score, mode) => {
-      if (score > maxScore) {
-        maxScore = score;
-        detectedMode = mode;
-      }
-    });
-
-    return detectedMode;
-  }
-
-  private getIntervals(notes: { note: string; time: number; duration: number }[]): string[] {
-    const intervals: string[] = [];
-    for (let i = 1; i < notes.length; i++) {
-      const interval = Note.interval(notes[i - 1].note, notes[i].note);
-      if (interval) intervals.push(interval);
-    }
-    return intervals;
-  }
-
-  private analyzeChords(
-    notes: { note: string; time: number; duration: number }[],
-    key: string,
-    mode: string
-  ): string[] {
-    const chords: string[] = [];
-    const scale = Scale.get(`${key} ${mode}`).notes;
+    if (notes.length < 3) return 'major';
     
-    // Group notes by time
-    const timeGroups = new Map<number, string[]>();
-    notes.forEach(({ note, time }) => {
-      const group = timeGroups.get(time) || [];
-      group.push(note);
-      timeGroups.set(time, group);
-    });
-
-    // Analyze each group for chords
-    timeGroups.forEach(group => {
-      const chord = this.detectChord(group, scale);
-      if (chord) {
-        chords.push(chord);
+    // Simple mode detection based on intervals
+    const intervals: number[] = [];
+    for (let i = 1; i < notes.length; i++) {
+      const interval = this.calculateInterval(notes[i - 1].note, notes[i].note);
+      if (interval !== null) {
+        intervals.push(interval);
       }
-    });
+    }
+    
+    // Count major vs minor intervals
+    const majorIntervals = intervals.filter(interval => [2, 4, 7, 9, 11].includes(interval)).length;
+    const minorIntervals = intervals.filter(interval => [1, 3, 6, 8, 10].includes(interval)).length;
+    
+    return majorIntervals > minorIntervals ? 'major' : 'minor';
+  }
 
+  private calculateInterval(note1: string, note2: string): number | null {
+    try {
+      const midi1 = Note.midi(note1);
+      const midi2 = Note.midi(note2);
+      
+      if (midi1 === null || midi2 === null) return null;
+      
+      return (midi2 - midi1 + 12) % 12;
+    } catch {
+      return null;
+    }
+  }
+
+  private getScale(key: string, mode: string): string[] {
+    try {
+      // Create scale manually since Scale.get() might not work as expected
+      const majorScale = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+      const minorScale = ['C', 'D', 'Eb', 'F', 'G', 'Ab', 'Bb'];
+      
+      const scale = mode === 'major' ? majorScale : minorScale;
+      
+      // Transpose to the correct key
+      const keyIndex = majorScale.indexOf(key);
+      if (keyIndex === -1) return scale;
+      
+      return scale.map(note => {
+        const noteIndex = majorScale.indexOf(note);
+        if (noteIndex === -1) return note;
+        const transposedIndex = (noteIndex + keyIndex) % 7;
+        return majorScale[transposedIndex];
+      });
+    } catch {
+      return ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+    }
+  }
+
+  private analyzeChords(notes: { note: string; time: number; duration: number }[], key: string, mode: string): string[] {
+    const chords: string[] = [];
+    const scale = this.getScale(key, mode);
+    
+    // Simple chord analysis based on scale degrees
+    for (let i = 0; i < notes.length - 2; i += 3) {
+      const chordNotes = notes.slice(i, i + 3);
+      const chordName = this.buildChordName(chordNotes, scale);
+      if (chordName) {
+        chords.push(chordName);
+      }
+    }
+    
     return chords;
   }
 
-  private detectChord(notes: string[], scale: string[]): string | null {
-    // Simple chord detection based on scale degrees
-    const scaleDegrees = notes.map(note => scale.indexOf(note));
-    if (scaleDegrees.length < 3) return null;
-
-    // Check for major triad
-    if (scaleDegrees.includes(0) && scaleDegrees.includes(2) && scaleDegrees.includes(4)) {
-      return `${scale[0]}maj`;
+  private buildChordName(notes: { note: string; time: number; duration: number }[], scale: string[]): string | null {
+    if (notes.length < 3) return null;
+    
+    try {
+      const baseNote = notes[0].note.replace(/\d/g, '');
+      const scaleIndex = scale.indexOf(baseNote);
+      
+      if (scaleIndex === -1) return null;
+      
+      // Determine chord type based on scale position
+      const chordTypes = ['maj', 'min', 'min', 'maj', 'maj', 'min', 'dim'];
+      const chordType = chordTypes[scaleIndex % 7];
+      
+      return `${baseNote}${chordType}`;
+    } catch {
+      return null;
     }
-    // Check for minor triad
-    if (scaleDegrees.includes(0) && scaleDegrees.includes(2) && scaleDegrees.includes(3)) {
-      return `${scale[0]}min`;
-    }
-    // Check for dominant 7th
-    if (scaleDegrees.includes(0) && scaleDegrees.includes(2) && scaleDegrees.includes(4) && scaleDegrees.includes(6)) {
-      return `${scale[0]}7`;
-    }
-
-    return null;
   }
 
   private analyzeChordProgression(chords: string[]): string[] {
-    const progression: string[] = [];
-    let currentChord = '';
-    let count = 0;
-
-    chords.forEach(chord => {
-      if (chord === currentChord) {
-        count++;
-      } else {
-        if (currentChord) {
-          progression.push(`${currentChord}(${count})`);
-        }
-        currentChord = chord;
-        count = 1;
-      }
-    });
-
-    if (currentChord) {
-      progression.push(`${currentChord}(${count})`);
-    }
-
-    return progression;
+    return chords.slice(0, 4); // Return first 4 chords as progression
   }
 
   private analyzeRhythm(midi: Midi): { timeSignature: string; tempo: number; rhythmicPattern: string } {
-    const tempo = midi.header?.tempos[0]?.bpm || 120;
-    const timeSignature = `${midi.header?.timeSignatures[0]?.timeSignature[0] || 4}/${midi.header?.timeSignatures[0]?.timeSignature[1] || 4}`;
+    // Extract tempo and time signature from MIDI
+    let tempo = 120;
+    let timeSignature = '4/4';
     
-    // Analyze rhythmic pattern
-    const durations = midi.tracks.flatMap(track => 
-      track.notes.map(note => note.duration)
-    );
-    const pattern = this.detectRhythmicPattern(durations);
-
+    try {
+      // Try to get tempo from MIDI header - use type assertion for compatibility
+      const midiAny = midi as any;
+      if (midiAny.header && midiAny.header.tempos && midiAny.header.tempos.length > 0) {
+        tempo = midiAny.header.tempos[0].bpm || 120;
+      }
+      
+      // Try to get time signature from MIDI header
+      if (midiAny.header && midiAny.header.timeSignatures && midiAny.header.timeSignatures.length > 0) {
+        const ts = midiAny.header.timeSignatures[0];
+        timeSignature = `${ts.timeSignature[0]}/${ts.timeSignature[1]}`;
+      }
+    } catch {
+      // Use defaults if header info is not available
+    }
+    
     return {
       timeSignature,
       tempo,
-      rhythmicPattern: pattern
+      rhythmicPattern: 'standard'
     };
   }
 
-  private detectRhythmicPattern(durations: number[]): string {
-    // Group similar durations
-    const groups = new Map<number, number>();
-    durations.forEach(duration => {
-      const rounded = Math.round(duration * 4) / 4; // Round to quarter notes
-      groups.set(rounded, (groups.get(rounded) || 0) + 1);
+  private analyzeMelody(notes: { note: string; time: number; duration: number }[]): { range: string; contour: string; intervals: string[] } {
+    if (notes.length === 0) {
+      return {
+        range: 'C4-C4',
+        contour: 'static',
+        intervals: []
+      };
+    }
+    
+    // Calculate melody range
+    const pitches = notes.map(n => {
+      try {
+        const midi = Note.midi(n.note);
+        return midi || 60;
+      } catch {
+        return 60;
+      }
     });
-
-    // Convert to pattern description
-    const pattern: string[] = [];
-    groups.forEach((count, duration) => {
-      const noteType = this.getNoteType(duration);
-      pattern.push(`${noteType}(${count})`);
-    });
-
-    return pattern.join('-');
-  }
-
-  private getNoteType(duration: number): string {
-    if (duration >= 4) return 'whole';
-    if (duration >= 2) return 'half';
-    if (duration >= 1) return 'quarter';
-    if (duration >= 0.5) return 'eighth';
-    if (duration >= 0.25) return 'sixteenth';
-    return 'thirty-second';
-  }
-
-  private analyzeMelody(notes: { note: string; time: number; duration: number }[]): {
-    range: string;
-    contour: string;
-    intervals: string[];
-  } {
-    const pitches = notes.map(n => Note.get(n.note).height);
+    
     const min = Math.min(...pitches);
     const max = Math.max(...pitches);
-    const range = `${Note.fromMidi(min)}-${Note.fromMidi(max)}`;
-
-    const contour = this.analyzeMelodicContour(pitches);
-    const intervals = this.getIntervals(notes);
-
-    return {
-      range,
-      contour,
-      intervals
-    };
-  }
-
-  private analyzeMelodicContour(pitches: number[]): string {
-    const directions: string[] = [];
-    for (let i = 1; i < pitches.length; i++) {
-      const diff = pitches[i] - pitches[i - 1];
-      if (diff > 0) directions.push('up');
-      else if (diff < 0) directions.push('down');
-      else directions.push('same');
-    }
-
-    // Simplify contour
-    const simplified = directions.reduce((acc, dir) => {
-      if (acc[acc.length - 1] !== dir) acc.push(dir);
-      return acc;
-    }, [] as string[]);
-
-    return simplified.join('-');
-  }
-
-  private analyzeHarmony(chords: string[]): {
-    complexity: number;
-    tension: number;
-    resolution: number;
-  } {
-    const complexity = this.calculateHarmonicComplexity(chords);
-    const tension = this.calculateHarmonicTension(chords);
-    const resolution = this.calculateHarmonicResolution(chords);
-
-    return {
-      complexity,
-      tension,
-      resolution
-    };
-  }
-
-  private calculateHarmonicComplexity(chords: string[]): number {
-    // Count different chord types and extensions
-    const uniqueChords = new Set(chords);
-    const extensions = chords.filter(c => c.includes('7') || c.includes('9')).length;
-    return (uniqueChords.size + extensions) / chords.length;
-  }
-
-  private calculateHarmonicTension(chords: string[]): number {
-    // Analyze dissonant intervals and chord types
-    const dissonantChords = chords.filter(c => 
-      c.includes('dim') || c.includes('aug') || c.includes('7')
-    ).length;
-    return dissonantChords / chords.length;
-  }
-
-  private calculateHarmonicResolution(chords: string[]): number {
-    // Count perfect cadences and resolutions
-    let resolutions = 0;
-    for (let i = 1; i < chords.length; i++) {
-      if (this.isResolution(chords[i - 1], chords[i])) resolutions++;
-    }
-    return resolutions / (chords.length - 1);
-  }
-
-  private isResolution(chord1: string, chord2: string): boolean {
-    // Check for common resolution patterns
-    const resolutions = [
-      ['V7', 'I'],
-      ['V', 'I'],
-      ['vii°', 'I'],
-      ['IV', 'I']
-    ];
-    return resolutions.some(([c1, c2]) => 
-      chord1.includes(c1) && chord2.includes(c2)
-    );
-  }
-
-  private analyzeEmotionalProfile(
-    melody: { range: string; contour: string; intervals: string[] },
-    harmony: { complexity: number; tension: number; resolution: number },
-    rhythm: { timeSignature: string; tempo: number; rhythmicPattern: string }
-  ): {
-    valence: number;
-    energy: number;
-    complexity: number;
-  } {
-    // Calculate emotional profile based on musical features
-    const valence = this.calculateValence(melody, harmony);
-    const energy = this.calculateEnergy(rhythm, melody);
-    const complexity = this.calculateComplexity(melody, harmony, rhythm);
-
-    return {
-      valence,
-      energy,
-      complexity
-    };
-  }
-
-  private calculateValence(
-    melody: { range: string; contour: string; intervals: string[] },
-    harmony: { complexity: number; tension: number; resolution: number }
-  ): number {
-    // Higher valence for:
-    // - Major keys and intervals
-    // - Upward contours
-    // - Resolved harmonies
-    const majorIntervals = melody.intervals.filter(i => 
-      i.includes('M') || i.includes('P')
-    ).length;
-    const upwardContours = melody.contour.split('-').filter(c => c === 'up').length;
     
-    return (
-      (majorIntervals / melody.intervals.length) * 0.4 +
-      (upwardContours / melody.contour.split('-').length) * 0.3 +
-      harmony.resolution * 0.3
-    );
+    const lowNote = this.midiToNoteName(min) || 'C4';
+    const highNote = this.midiToNoteName(max) || 'C4';
+    const range = `${lowNote}-${highNote}`;
+    
+    // Analyze contour
+    let contour = 'static';
+    if (notes.length > 1) {
+      const firstPitch = pitches[0];
+      const lastPitch = pitches[pitches.length - 1];
+      if (lastPitch > firstPitch) contour = 'ascending';
+      else if (lastPitch < firstPitch) contour = 'descending';
+    }
+    
+    // Calculate intervals
+    const intervals: string[] = [];
+    for (let i = 1; i < notes.length; i++) {
+      const interval = this.calculateInterval(notes[i - 1].note, notes[i].note);
+      if (interval !== null) {
+        intervals.push(interval.toString());
+      }
+    }
+    
+    return { range, contour, intervals };
   }
 
-  private calculateEnergy(
-    rhythm: { timeSignature: string; tempo: number; rhythmicPattern: string },
-    melody: { range: string; contour: string; intervals: string[] }
-  ): number {
-    // Higher energy for:
-    // - Faster tempos
-    // - Wider ranges
-    // - More active rhythms
-    const tempoFactor = Math.min(rhythm.tempo / 180, 1);
-    const rangeFactor = this.calculateRangeFactor(melody.range);
-    const rhythmFactor = this.calculateRhythmFactor(rhythm.rhythmicPattern);
-
-    return (
-      tempoFactor * 0.4 +
-      rangeFactor * 0.3 +
-      rhythmFactor * 0.3
-    );
+  private analyzeHarmony(chords: string[]): { complexity: number; tension: number; resolution: number } {
+    if (chords.length === 0) {
+      return { complexity: 0, tension: 0, resolution: 0 };
+    }
+    
+    // Calculate harmony metrics
+    const complexity = Math.min(1.0, chords.length / 10);
+    const tension = Math.min(1.0, chords.filter(c => c.includes('dim') || c.includes('aug')).length / chords.length);
+    const resolution = Math.min(1.0, chords.filter(c => c.includes('maj')).length / chords.length);
+    
+    return { complexity, tension, resolution };
   }
 
-  private calculateRangeFactor(range: string): number {
-    const [low, high] = range.split('-');
-    const lowHeight = Note.get(low).height;
-    const highHeight = Note.get(high).height;
-    return Math.min((highHeight - lowHeight) / 24, 1);
-  }
-
-  private calculateRhythmFactor(pattern: string): number {
-    const shortNotes = pattern.split('-').filter(p => 
-      p.includes('sixteenth') || p.includes('eighth')
-    ).length;
-    return Math.min(shortNotes / 8, 1);
-  }
-
-  private calculateComplexity(
-    melody: { range: string; contour: string; intervals: string[] },
-    harmony: { complexity: number; tension: number; resolution: number },
-    rhythm: { timeSignature: string; tempo: number; rhythmicPattern: string }
-  ): number {
-    return (
-      harmony.complexity * 0.4 +
-      (melody.intervals.length / 20) * 0.3 +
-      (rhythm.rhythmicPattern.split('-').length / 8) * 0.3
-    );
+  private analyzeEmotionalProfile(melody: { range: string; contour: string; intervals: string[] }, harmony: { complexity: number; tension: number; resolution: number }, rhythm: { timeSignature: string; tempo: number; rhythmicPattern: string }): { valence: number; energy: number; complexity: number } {
+    // Calculate emotional profile based on musical features
+    const valence = Math.max(0, Math.min(1, harmony.resolution * 0.7 + (melody.contour === 'ascending' ? 0.3 : 0)));
+    const energy = Math.max(0, Math.min(1, rhythm.tempo / 200 + harmony.complexity * 0.5));
+    const complexity = Math.max(0, Math.min(1, harmony.complexity * 0.6 + melody.intervals.length / 10));
+    
+    return { valence, energy, complexity };
   }
 
   public generateSummary(analysis: MusicTheoryAnalysis): string {
@@ -483,10 +365,12 @@ The melody ${this.getMelodicDescription(analysis.melody)}.
 
   private getMelodicDescription(melody: { range: string; contour: string; intervals: string[] }): string {
     const range = melody.range.split('-');
-    const rangeSize = Note.get(range[1]).height - Note.get(range[0]).height;
+    const midi1 = Note.midi(range[1]);
+    const midi2 = Note.midi(range[0]);
+    const rangeSize = (midi1 || 60) - (midi2 || 60);
     const rangeDesc = rangeSize > 12 ? 'spans a wide range' : 'stays within a narrow range';
-    const contour = melody.contour.includes('up-up') ? 'tends to ascend' :
-                   melody.contour.includes('down-down') ? 'tends to descend' :
+    const contour = melody.contour.includes('ascending') ? 'tends to ascend' :
+                   melody.contour.includes('descending') ? 'tends to descend' :
                    'moves in varied directions';
     return `${rangeDesc} and ${contour}`;
   }

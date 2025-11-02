@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Swizzle Visualizer - Visual Sound for Accessibility</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #canvas2d {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #canvas3d {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #fff;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 350px;
+            z-index: 1000;
+        }
+
+        #legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #fff;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 300px;
+            z-index: 1000;
+            font-size: 12px;
+        }
+
+        #sources {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #fff;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 400px;
+            z-index: 1000;
+        }
+
+        button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #fff;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #fff;
+            color: #000;
+        }
+
+        button.active {
+            background: #4CAF50;
+            border-color: #4CAF50;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        h2 {
+            color: #4CAF50;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        h3 {
+            color: #64B5F6;
+            margin: 10px 0 5px 0;
+            font-size: 16px;
+        }
+
+        .legend-item {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .legend-icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #fff;
+        }
+
+        .source-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .source-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .source-info {
+            flex-grow: 1;
+        }
+
+        .source-name {
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .source-status {
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .info-text {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 5px;
+            line-height: 1.4;
+        }
+
+        .axis-label {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        #xAxisLabel { bottom: 10px; left: 50%; transform: translateX(-50%); }
+        #yAxisLabel { top: 50%; left: 10px; transform: translateY(-50%) rotate(-90deg); }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas2d"></canvas>
+        <canvas id="canvas3d"></canvas>
+        
+        <div class="axis-label" id="xAxisLabel">RESONANCE / HARMONIC RICHNESS →</div>
+        <div class="axis-label" id="yAxisLabel">PITCH / FREQUENCY ↑</div>
+
+        <div id="controls">
+            <h2>🎨 Audio Swizzle Visualizer</h2>
+            <p class="info-text">Visual sound representation for accessibility</p>
+            
+            <div class="mode-toggle">
+                <button id="start2dBtn" class="active">Start 2D</button>
+                <button id="start3dBtn">Start 3D</button>
+                <button id="stopBtn" disabled>Stop</button>
+            </div>
+
+            <h3>Microphone Input</h3>
+            <button id="micBtn">Enable Microphone</button>
+            <p class="info-text">Allow microphone access to visualize live audio</p>
+
+            <h3>Test Tones</h3>
+            <button onclick="playTestTone('440')">A4 (440 Hz)</button>
+            <button onclick="playTestTone('880')">A5 (880 Hz)</button>
+            <button onclick="playWhiteNoise()">White Noise</button>
+        </div>
+
+        <div id="legend">
+            <h3>Visual Mapping Guide</h3>
+            
+            <div class="legend-item">
+                <div class="legend-icon" style="background: linear-gradient(to bottom, white, black);"></div>
+                <span><strong>Height</strong>: Pitch/Frequency (low=bottom, high=top)</span>
+            </div>
+            
+            <div class="legend-item">
+                <div class="legend-icon" style="background: linear-gradient(to right, gray, white);"></div>
+                <span><strong>Width</strong>: Resonance/Harmonic Richness</span>
+            </div>
+            
+            <div class="legend-item">
+                <div class="legend-icon" style="background: linear-gradient(to right, red, blue);"></div>
+                <span><strong>Color</strong>: Red=Bass, Blue=Treble</span>
+            </div>
+            
+            <div class="legend-item">
+                <div class="legend-icon" style="background: radial-gradient(white, transparent);"></div>
+                <span><strong>Brightness</strong>: Volume/Amplitude</span>
+            </div>
+            
+            <div class="legend-item">
+                <div class="legend-icon" style="background: #888;"></div>
+                <span><strong>Size</strong>: Harmonic Complexity</span>
+            </div>
+
+            <h3>Shapes</h3>
+            <p class="info-text">
+                ⭕ Circle = Simple tone<br>
+                ▢ Square = Medium complexity<br>
+                △ Triangle = Pure tone<br>
+                ⭐ Star = Rich harmonics<br>
+                ⚡ Spike = Noisy/percussive<br>
+                〰 Wave = Complex waveform
+            </p>
+        </div>
+
+        <div id="sources">
+            <h3>Active Audio Sources</h3>
+            <div id="sourcesList"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Canvas setup
+        const canvas2d = document.getElementById('canvas2d');
+        const ctx2d = canvas2d.getContext('2d');
+        const canvas3d = document.getElementById('canvas3d');
+        const ctx3d = canvas3d.getContext('2d');
+        
+        let width, height;
+        let mode = '2d';
+        let isRunning = false;
+        let socket = null;
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let visualizationFrame = null;
+        let testOscillator = null;
+        
+        // Trail buffer for motion history
+        const trailBuffers = new Map(); // sourceId -> array of past positions
+        const TRAIL_LENGTH = 12; // Number of trail segments (more for standalone view)
+        let testGain = null;
+
+        function resizeCanvas() {
+            width = canvas2d.width = canvas3d.width = window.innerWidth;
+            height = canvas2d.height = canvas3d.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Connect to server
+        function connectToServer() {
+            socket = io();
+
+            socket.on('connect', () => {
+                console.log('Connected to server');
+            });
+
+            socket.on('visualizationFrame', (frame) => {
+                visualizationFrame = frame;
+                updateSourcesList();
+            });
+        }
+
+        // Initialize audio context
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.smoothingTimeConstant = 0.8;
+            }
+        }
+
+        // Enable microphone
+        document.getElementById('micBtn').addEventListener('click', async () => {
+            try {
+                initAudioContext();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+                
+                // Register the microphone source
+                socket.emit('registerAudioSource', { id: 'microphone', name: 'Microphone', color: '#00ff00' });
+                
+                document.getElementById('micBtn').textContent = 'Microphone Active';
+                document.getElementById('micBtn').classList.add('active');
+                document.getElementById('micBtn').disabled = true;
+                
+                console.log('Microphone enabled');
+            } catch (error) {
+                alert('Error accessing microphone: ' + error.message);
+            }
+        });
+
+        // Test tones
+        function playTestTone(freq) {
+            initAudioContext();
+            
+            // Stop previous tone
+            if (testOscillator) {
+                testOscillator.stop();
+                testOscillator = null;
+            }
+
+            testOscillator = audioContext.createOscillator();
+            testGain = audioContext.createGain();
+            
+            testOscillator.frequency.value = parseFloat(freq);
+            testOscillator.type = 'sine';
+            testGain.gain.value = 0.3;
+            
+            testOscillator.connect(testGain);
+            testGain.connect(analyser);
+            testGain.connect(audioContext.destination);
+            
+            testOscillator.start();
+            
+            // Auto-stop after 2 seconds
+            setTimeout(() => {
+                if (testOscillator) {
+                    testOscillator.stop();
+                    testOscillator = null;
+                }
+            }, 2000);
+        }
+
+        function playWhiteNoise() {
+            initAudioContext();
+            
+            if (testOscillator) {
+                testOscillator.stop();
+            }
+
+            const bufferSize = audioContext.sampleRate * 2;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            const source = audioContext.createBufferSource();
+            testGain = audioContext.createGain();
+            source.buffer = buffer;
+            testGain.gain.value = 0.1;
+            
+            source.connect(testGain);
+            testGain.connect(analyser);
+            testGain.connect(audioContext.destination);
+            
+            source.start();
+            testOscillator = source;
+        }
+
+        // Controls
+        document.getElementById('start2dBtn').addEventListener('click', () => {
+            mode = '2d';
+            canvas2d.style.display = 'block';
+            canvas3d.style.display = 'none';
+            // Register source if not already done
+            socket.emit('registerAudioSource', { id: 'microphone', name: 'Microphone', color: '#00ff00' });
+            startVisualization();
+            updateButtonStates();
+        });
+
+        document.getElementById('start3dBtn').addEventListener('click', () => {
+            mode = '3d';
+            canvas2d.style.display = 'none';
+            canvas3d.style.display = 'block';
+            // Register source if not already done
+            socket.emit('registerAudioSource', { id: 'microphone', name: 'Microphone', color: '#00ff00' });
+            startVisualization();
+            updateButtonStates();
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            stopVisualization();
+            updateButtonStates();
+        });
+
+        function updateButtonStates() {
+            document.getElementById('start2dBtn').disabled = isRunning && mode === '2d';
+            document.getElementById('start3dBtn').disabled = isRunning && mode === '3d';
+            document.getElementById('stopBtn').disabled = !isRunning;
+            
+            document.getElementById('start2dBtn').classList.toggle('active', isRunning && mode === '2d');
+            document.getElementById('start3dBtn').classList.toggle('active', isRunning && mode === '3d');
+        }
+
+        function startVisualization() {
+            if (!analyser) {
+                alert('Please enable microphone or play a test tone first');
+                return;
+            }
+            isRunning = true;
+            socket.emit('startAudioSwizzle', { mode });
+        }
+
+        function stopVisualization() {
+            isRunning = false;
+            socket.emit('stopAudioSwizzle');
+        }
+
+        // Process audio and send to server
+        function processAudio() {
+            if (!analyser || !isRunning) return;
+
+            const bufferLength = analyser.fftSize;
+            const dataArray = new Float32Array(bufferLength);
+            analyser.getFloatTimeDomainData(dataArray);
+
+            // Send audio data to server
+            socket.emit('audioData', {
+                sourceId: 'microphone',
+                audioData: Array.from(dataArray),
+                sampleRate: audioContext.sampleRate
+            });
+        }
+
+        // Update sources list
+        function updateSourcesList() {
+            if (!visualizationFrame) return;
+
+            const sourcesList = document.getElementById('sourcesList');
+            sourcesList.innerHTML = '';
+
+            if (visualizationFrame.elements.length === 0) {
+                sourcesList.innerHTML = '<p style="color:#666;">No active sources</p>';
+                return;
+            }
+
+            visualizationFrame.elements.forEach(element => {
+                const source = document.createElement('div');
+                source.className = 'source-item';
+                source.innerHTML = `
+                    <div class="source-color" style="background: rgb(${element.color.r}, ${element.color.g}, ${element.color.b});"></div>
+                    <div class="source-info">
+                        <div class="source-name">${element.sourceId}</div>
+                        <div class="source-status">
+                            ${element.frequency.toFixed(0)} Hz | 
+                            ${element.shape} | 
+                            Amp: ${(element.amplitude * 100).toFixed(0)}%
+                        </div>
+                    </div>
+                `;
+                sourcesList.appendChild(source);
+            });
+        }
+
+        // Rendering
+        function render() {
+            if (!visualizationFrame) return;
+
+            const ctx = mode === '2d' ? ctx2d : ctx3d;
+            const canvas = mode === '2d' ? canvas2d : canvas3d;
+
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw grid
+            drawGrid(ctx);
+
+            // Draw visualization elements
+            visualizationFrame.elements.forEach(element => {
+                if (mode === '2d') {
+                    draw2DElement(ctx, element);
+                } else {
+                    draw3DElement(ctx, element);
+                }
+            });
+
+            // Draw frequency bands visualization
+            drawFrequencyBands(ctx);
+        }
+
+        function drawGrid(ctx) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+
+            // Vertical lines
+            for (let x = 0; x < width; x += width / 10) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            // Horizontal lines
+            for (let y = 0; y < height; y += height / 10) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+        }
+
+        function draw2DElement(ctx, element) {
+            const x = element.x * width;
+            const y = height - (element.y * height); // Invert Y for pitch
+            const size = element.size * 50 + 20;
+
+            // Update trail buffer
+            if (!trailBuffers.has(element.sourceId)) {
+                trailBuffers.set(element.sourceId, []);
+            }
+            
+            const trail = trailBuffers.get(element.sourceId);
+            const currentPos = {
+                x, y, size,
+                color: element.color,
+                brightness: element.brightness,
+                rotation: element.rotation,
+                shape: element.shape
+            };
+            
+            // Add current position to trail
+            trail.unshift(currentPos);
+            if (trail.length > TRAIL_LENGTH) {
+                trail.pop();
+            }
+
+            // Draw trail (oldest to newest) with progressive falloff
+            for (let i = trail.length - 1; i >= 0; i--) {
+                const pos = trail[i];
+                const age = i;
+                const ageFactor = 1 - (age / TRAIL_LENGTH); // 1.0 = newest, 0.0 = oldest
+                
+                // Progressive falloff with cubic easing for smooth fade
+                const alpha = element.brightness * Math.pow(ageFactor, 1.5);
+                const trailSize = pos.size * (0.3 + ageFactor * 0.7); // Shrink with age
+                
+                // Glow effect
+                const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, trailSize);
+                const color = `rgba(${pos.color.r}, ${pos.color.g}, ${pos.color.b}, ${alpha})`;
+                gradient.addColorStop(0, color);
+                gradient.addColorStop(0.5, `rgba(${pos.color.r}, ${pos.color.g}, ${pos.color.b}, ${alpha * 0.5})`);
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                ctx.fillStyle = gradient;
+
+                // Draw shape
+                ctx.save();
+                ctx.translate(pos.x, pos.y);
+                ctx.rotate(pos.rotation);
+
+                switch (pos.shape) {
+                    case 'circle':
+                        ctx.beginPath();
+                        ctx.arc(0, 0, trailSize / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    
+                    case 'square':
+                        ctx.fillRect(-trailSize / 2, -trailSize / 2, trailSize, trailSize);
+                        break;
+                    
+                    case 'triangle':
+                        ctx.beginPath();
+                        ctx.moveTo(0, -trailSize / 2);
+                        ctx.lineTo(trailSize / 2, trailSize / 2);
+                        ctx.lineTo(-trailSize / 2, trailSize / 2);
+                        ctx.closePath();
+                        ctx.fill();
+                        break;
+                    
+                    case 'star':
+                        drawStar(ctx, 0, 0, 5, trailSize / 2, trailSize / 4);
+                        ctx.fill();
+                        break;
+                    
+                    case 'spike':
+                        drawSpike(ctx, 0, 0, trailSize / 2, 8);
+                        ctx.fill();
+                        break;
+                    
+                    case 'wave':
+                        drawWave(ctx, -trailSize / 2, 0, trailSize, 10);
+                        ctx.fill();
+                        break;
+                }
+
+                ctx.restore();
+            }
+
+            // Draw frequency label (only on newest/brightest)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.font = '12px Arial';
+            ctx.fillText(`${element.frequency.toFixed(0)} Hz`, x + size / 2 + 5, y);
+        }
+
+        function draw3DElement(ctx, element) {
+            // 3D projection with depth (z)
+            const perspective = 1000;
+            const scale = perspective / (perspective + element.z * 500);
+            
+            const x = (element.x * width - width / 2) * scale + width / 2;
+            const y = (height - element.y * height - height / 2) * scale + height / 2;
+            const size = (element.size * 50 + 20) * scale;
+
+            // Alpha based on depth
+            const alpha = element.brightness * (1 - element.z * 0.5);
+
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+            const color = `rgba(${element.color.r}, ${element.color.g}, ${element.color.b}, ${alpha})`;
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw depth indicator
+            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.5})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function drawStar(ctx, x, y, points, outer, inner) {
+            ctx.beginPath();
+            for (let i = 0; i < points * 2; i++) {
+                const angle = (i * Math.PI) / points;
+                const radius = i % 2 === 0 ? outer : inner;
+                const px = x + Math.cos(angle) * radius;
+                const py = y + Math.sin(angle) * radius;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+        }
+
+        function drawSpike(ctx, x, y, size, spikes) {
+            ctx.beginPath();
+            for (let i = 0; i < spikes; i++) {
+                const angle = (i * Math.PI * 2) / spikes;
+                const px = x + Math.cos(angle) * size;
+                const py = y + Math.sin(angle) * size;
+                ctx.lineTo(px, py);
+                ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+        }
+
+        function drawWave(ctx, x, y, width, amplitude) {
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            for (let i = 0; i <= width; i += 5) {
+                const py = y + Math.sin((i / width) * Math.PI * 4) * amplitude;
+                ctx.lineTo(x + i, py);
+            }
+            ctx.lineTo(x + width, y);
+            ctx.closePath();
+        }
+
+        function drawFrequencyBands(ctx) {
+            if (!analyser) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            const barWidth = width / bufferLength;
+            const barHeight = 100;
+            const y = height - barHeight;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i] / 255;
+                const hue = (i / bufferLength) * 300; // Red to blue
+                ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.5)`;
+                ctx.fillRect(i * barWidth, y + (1 - value) * barHeight, barWidth, value * barHeight);
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            if (isRunning) {
+                processAudio();
+                render();
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        connectToServer();
+        animate();
+        setInterval(processAudio, 50); // Process audio every 50ms
+    </script>
+</body>
+</html>
+

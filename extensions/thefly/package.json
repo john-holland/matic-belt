@@ -5,9 +5,12 @@
   "main": "dist/standalone.js",
   "scripts": {
     "build": "tsc",
-    "start": "ts-node src/standalone.ts",
-    "dev": "ts-node-dev --respawn src/standalone.ts",
+    "start": "ts-node src/integrated-demo.ts",
+    "dev": "ts-node-dev --respawn src/integrated-demo.ts",
     "standalone": "ts-node src/standalone.ts",
+    "integrated": "ts-node src/integrated-demo.ts",
+    "galaxy": "ts-node src/integrated-demo.ts",
+    "audio-swizzle": "ts-node src/integrated-demo.ts",
     "test": "ts-node src/test.ts"
   },
   "dependencies": {

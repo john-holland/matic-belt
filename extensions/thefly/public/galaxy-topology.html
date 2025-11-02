@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Consciousness Topology Simulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #0f0;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 400px;
+            z-index: 1000;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #0f0;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 400px;
+            z-index: 1000;
+            font-size: 12px;
+        }
+
+        button {
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #0f0;
+            color: #000;
+        }
+
+        button.active {
+            background: #0f0;
+            color: #000;
+        }
+
+        h2 {
+            color: #0ff;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        h3 {
+            color: #ff0;
+            margin: 10px 0 5px 0;
+            font-size: 14px;
+        }
+
+        .metric {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .metric-label {
+            color: #0f0;
+        }
+
+        .metric-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #111;
+            border: 1px solid #0f0;
+            margin: 5px 0;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0f0, #0ff);
+            transition: width 0.3s;
+        }
+
+        .third-space-alert {
+            background: #ff0;
+            color: #000;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+            font-weight: bold;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .galaxy-card {
+            background: rgba(0, 50, 0, 0.3);
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+        }
+
+        .consciousness-bar {
+            width: 100%;
+            height: 8px;
+            background: #111;
+            border: 1px solid #0f0;
+            margin: 3px 0;
+        }
+
+        .consciousness-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff);
+            transition: width 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        
+        <div id="controls">
+            <h2>🌌 Galaxy Consciousness Topology</h2>
+            <button id="startBtn">Start Simulation</button>
+            <button id="stopBtn" disabled>Stop Simulation</button>
+            <button id="resetBtn">Reset</button>
+            <br>
+            <h3>Consciousness Injection</h3>
+            <button onclick="injectConsciousness('milkyway', 0.1)">Boost Milky Way</button>
+            <button onclick="injectConsciousness('sagittarius_a', 0.1)">Boost Sagittarius A*</button>
+            <br>
+            <button onclick="addRandomGalaxy()">Add Random Galaxy</button>
+        </div>
+
+        <div id="info">
+            <h2>Simulation State</h2>
+            <div class="metric">
+                <span class="metric-label">Simulation Time:</span>
+                <span class="metric-value" id="simTime">0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Active Galaxies:</span>
+                <span class="metric-value" id="numGalaxies">2</span>
+            </div>
+
+            <div id="thirdSpaceAlert" style="display:none;" class="third-space-alert">
+                ✨ THIRD SPACE EMERGED ✨
+            </div>
+
+            <div id="galaxiesInfo"></div>
+
+            <div id="thirdSpaceInfo" style="display:none;">
+                <h3>Third Space Metrics</h3>
+                <div class="metric">
+                    <span class="metric-label">Annealing Progress:</span>
+                    <span class="metric-value" id="annealingProgress">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="annealingBar" style="width:0%"></div>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Consciousness Level:</span>
+                    <span class="metric-value" id="thirdConsciousness">0.00</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Topological Dimension:</span>
+                    <span class="metric-value" id="topoDimension">0.00</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Entanglement:</span>
+                    <span class="metric-value" id="entanglement">0.00</span>
+                </div>
+            </div>
+
+            <div id="relationshipsInfo" style="margin-top:10px;"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        function resizeCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Simulation state
+        let simulationState = null;
+        let socket = null;
+        let isConnected = false;
+
+        // Connect to server
+        function connectToServer() {
+            socket = io();
+
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                isConnected = true;
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                isConnected = false;
+            });
+
+            socket.on('galaxyUpdate', (state) => {
+                simulationState = state;
+                updateUI();
+                render();
+            });
+
+            socket.on('thirdSpaceEmerged', (thirdSpace) => {
+                document.getElementById('thirdSpaceAlert').style.display = 'block';
+                setTimeout(() => {
+                    document.getElementById('thirdSpaceAlert').style.display = 'none';
+                }, 5000);
+            });
+        }
+
+        // Controls
+        document.getElementById('startBtn').addEventListener('click', () => {
+            socket.emit('startGalaxySimulation');
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('startBtn').classList.remove('active');
+            document.getElementById('stopBtn').classList.add('active');
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            socket.emit('stopGalaxySimulation');
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('stopBtn').classList.remove('active');
+            document.getElementById('startBtn').classList.add('active');
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            socket.emit('resetGalaxySimulation');
+        });
+
+        function injectConsciousness(galaxyId, amount) {
+            socket.emit('injectConsciousness', { galaxyId, amount });
+        }
+
+        function addRandomGalaxy() {
+            const id = 'galaxy_' + Math.random().toString(36).substr(2, 9);
+            const position = {
+                x: (Math.random() - 0.5) * 1e6 * 9.461e15,
+                y: (Math.random() - 0.5) * 1e6 * 9.461e15,
+                z: (Math.random() - 0.5) * 1e6 * 9.461e15
+            };
+            const mass = Math.random() * 1e12;
+            socket.emit('addGalaxy', { id, position, mass });
+        }
+
+        // Update UI
+        function updateUI() {
+            if (!simulationState) return;
+
+            document.getElementById('simTime').textContent = simulationState.simulationTime;
+            document.getElementById('numGalaxies').textContent = simulationState.galaxies.length;
+
+            // Update galaxies info
+            const galaxiesInfo = document.getElementById('galaxiesInfo');
+            galaxiesInfo.innerHTML = '<h3>Galaxies</h3>';
+            simulationState.galaxies.forEach(galaxy => {
+                const card = document.createElement('div');
+                card.className = 'galaxy-card';
+                card.innerHTML = `
+                    <strong>${galaxy.id}</strong>
+                    <div class="metric">
+                        <span class="metric-label">Consciousness:</span>
+                        <span class="metric-value">${galaxy.consciousness.toFixed(3)}</span>
+                    </div>
+                    <div class="consciousness-bar">
+                        <div class="consciousness-fill" style="width:${galaxy.consciousness * 100}%"></div>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Sim Depth:</span>
+                        <span class="metric-value">${galaxy.simulationDepth.toFixed(1)}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Resonance:</span>
+                        <span class="metric-value">${galaxy.resonance.toFixed(3)}</span>
+                    </div>
+                `;
+                galaxiesInfo.appendChild(card);
+            });
+
+            // Update third space info
+            if (simulationState.thirdSpace) {
+                document.getElementById('thirdSpaceInfo').style.display = 'block';
+                const ts = simulationState.thirdSpace;
+                document.getElementById('annealingProgress').textContent = 
+                    (ts.annealingProgress * 100).toFixed(1) + '%';
+                document.getElementById('annealingBar').style.width = 
+                    (ts.annealingProgress * 100) + '%';
+                document.getElementById('thirdConsciousness').textContent = 
+                    ts.consciousnessLevel.toFixed(3);
+                document.getElementById('topoDimension').textContent = 
+                    ts.topologicalDimension.toFixed(3);
+                document.getElementById('entanglement').textContent = 
+                    ts.entanglementStrength.toFixed(3);
+            }
+
+            // Update relationships
+            if (simulationState.relationships) {
+                const relInfo = document.getElementById('relationshipsInfo');
+                relInfo.innerHTML = '<h3>Topological Relationships</h3>';
+                simulationState.relationships.forEach(rel => {
+                    const relDiv = document.createElement('div');
+                    relDiv.style.fontSize = '10px';
+                    relDiv.style.marginBottom = '5px';
+                    relDiv.innerHTML = `
+                        ${rel.galaxy1.id} ↔ ${rel.galaxy2.id}<br>
+                        Geodesic Dist: ${rel.geodesicDistance.toExponential(2)}<br>
+                        Info Symmetry: ${rel.informationSymmetry.toFixed(3)}<br>
+                        Bridges: ${rel.bridgePoints.length}
+                    `;
+                    relInfo.appendChild(relDiv);
+                });
+            }
+        }
+
+        // Rendering
+        function render() {
+            if (!simulationState) return;
+
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw starfield background
+            ctx.fillStyle = '#fff';
+            for (let i = 0; i < 200; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                const size = Math.random() * 2;
+                ctx.fillRect(x, y, size, size);
+            }
+
+            // Calculate center point
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const scale = Math.min(width, height) / 4;
+
+            // Draw parallax mappings (connections)
+            simulationState.parallaxMappings.forEach(mapping => {
+                const g1 = simulationState.galaxies.find(g => g.id === mapping.sourceGalaxy);
+                const g2 = simulationState.galaxies.find(g => g.id === mapping.targetGalaxy);
+                
+                if (g1 && g2) {
+                    const x1 = centerX + (g1.position.x / 1e18) * scale;
+                    const y1 = centerY + (g1.position.y / 1e18) * scale;
+                    const x2 = centerX + (g2.position.x / 1e18) * scale;
+                    const y2 = centerY + (g2.position.y / 1e18) * scale;
+
+                    // Draw connection with opacity based on information flow
+                    ctx.strokeStyle = `rgba(0, 255, 255, ${mapping.informationFlow})`;
+                    ctx.lineWidth = 1 + mapping.reflectionDepth * 0.1;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                }
+            });
+
+            // Draw bridge points
+            if (simulationState.relationships) {
+                simulationState.relationships.forEach(rel => {
+                    rel.bridgePoints.forEach(point => {
+                        const x = centerX + (point.x / 1e18) * scale;
+                        const y = centerY + (point.y / 1e18) * scale;
+                        
+                        ctx.fillStyle = 'rgba(255, 255, 0, 0.5)';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+                });
+            }
+
+            // Draw third space (if emerged)
+            if (simulationState.thirdSpace) {
+                const ts = simulationState.thirdSpace;
+                const radius = 50 + ts.consciousnessLevel * 100;
+                
+                // Pulsing third space
+                const pulse = Math.sin(Date.now() / 300) * 0.2 + 0.8;
+                const alpha = ts.annealingProgress * pulse;
+                
+                ctx.fillStyle = `rgba(255, 0, 255, ${alpha * 0.3})`;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = `rgba(255, 0, 255, ${alpha})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw resonance pattern as concentric circles
+                ts.resonancePattern.forEach((freq, i) => {
+                    const r = radius + i * 20;
+                    ctx.strokeStyle = `rgba(255, 0, 255, ${0.3 * alpha})`;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                    ctx.stroke();
+                });
+            }
+
+            // Draw galaxies
+            simulationState.galaxies.forEach(galaxy => {
+                const x = centerX + (galaxy.position.x / 1e18) * scale;
+                const y = centerY + (galaxy.position.y / 1e18) * scale;
+                
+                // Size based on mass and consciousness
+                const baseSize = Math.log10(galaxy.mass) * 2;
+                const size = baseSize + galaxy.consciousness * 20;
+
+                // Color based on consciousness
+                const r = Math.floor(255 * galaxy.consciousness);
+                const g = Math.floor(255 * galaxy.resonance);
+                const b = 255;
+
+                // Glow effect
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
+                gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.5)`);
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw label
+                ctx.fillStyle = '#0f0';
+                ctx.font = '12px Courier New';
+                ctx.fillText(galaxy.id, x + size + 5, y);
+            });
+        }
+
+        // Animation loop
+        function animate() {
+            if (simulationState) {
+                render();
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        connectToServer();
+        animate();
+    </script>
+</body>
+</html>
+
+
+

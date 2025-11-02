@@ -3,33 +3,290 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Fly - Audio Awareness</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>TheFly - Integrated Demo</title>
     <style>
-        body {
+        * {
             margin: 0;
-            overflow: hidden;
-            background: #000;
+            padding: 0;
+            box-sizing: border-box;
         }
-        #info {
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #000000 0%, #1a0033 50%, #000066 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #00ff00, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: shimmer 3s infinite;
+        }
+
+        @keyframes shimmer {
+            0%, 100% { filter: hue-rotate(0deg); }
+            50% { filter: hue-rotate(30deg); }
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 18px;
+            color: #0ff;
+            margin-bottom: 50px;
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .demo-card {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #0f0;
+            border-radius: 10px;
+            padding: 30px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .demo-card::before {
+            content: '';
             position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            font-family: monospace;
-            background: rgba(0,0,0,0.5);
-            padding: 10px;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0,255,255,0.1) 0%, transparent 50%);
+            animation: rotate 10s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .demo-card:hover {
+            border-color: #0ff;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 255, 255, 0.3);
+        }
+
+        .demo-card h2 {
+            color: #0ff;
+            margin-bottom: 15px;
+            font-size: 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .demo-card p {
+            color: #aaa;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            font-size: 14px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .demo-card ul {
+            list-style: none;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .demo-card li {
+            color: #0f0;
+            padding: 5px 0;
+            font-size: 13px;
+        }
+
+        .demo-card li::before {
+            content: '▸ ';
+            color: #0ff;
+        }
+
+        .launch-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(90deg, #0f0, #0ff);
+            border: none;
             border-radius: 5px;
+            color: #000;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .launch-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .integrated-card {
+            border-color: #ff00ff;
+            grid-column: 1 / -1;
+        }
+
+        .integrated-card h2 {
+            color: #ff00ff;
+        }
+
+        .integrated-card .launch-btn {
+            background: linear-gradient(90deg, #ff00ff, #00ffff);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .concept-section {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #555;
+            border-radius: 10px;
+            padding: 30px;
+            margin-top: 40px;
+        }
+
+        .concept-section h3 {
+            color: #ff0;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .concept-section p {
+            color: #aaa;
+            line-height: 1.8;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .emoji {
+            font-size: 36px;
+            margin-bottom: 15px;
+            display: block;
         }
     </style>
 </head>
 <body>
-    <div id="info">
-        <h2>The Fly</h2>
-        <p>Audio Awareness System</p>
-        <div id="status">Status: Disconnected</div>
+    <div class="container">
+        <h1>🪰 TheFly Integrated Demo</h1>
+        <p class="subtitle">Exploring Consciousness, Sound, and Cosmic Topology</p>
+
+        <div class="demo-grid">
+            <div class="demo-card">
+                <span class="emoji">🌌</span>
+                <h2>Galaxy Consciousness Topology</h2>
+                <p>
+                    Explore parallax reflective topology between simulated galactic consciousnesses.
+                    Watch as Sagittarius A* and the Milky Way interact through bidirectional simulation,
+                    potentially annealing to a "third space" of emergent consciousness.
+                </p>
+                <ul>
+                    <li>Parallax reflective mapping</li>
+                    <li>Bidirectional simulation dynamics</li>
+                    <li>Third space emergence detection</li>
+                    <li>Topological relationship visualization</li>
+                    <li>Consciousness injection controls</li>
+                </ul>
+                <a href="/galaxy" class="launch-btn">Launch Galaxy Topology →</a>
+            </div>
+
+            <div class="demo-card">
+                <span class="emoji">🎨</span>
+                <h2>Audio Swizzle Visualizer</h2>
+                <p>
+                    Multi-dimensional live sound-to-visual mapping system designed for accessibility.
+                    See sound through space, color, shape, and motion. Perfect for deaf users to
+                    experience audio in rich visual detail.
+                </p>
+                <ul>
+                    <li>Height = Pitch/Frequency</li>
+                    <li>Width = Resonance/Harmonic richness</li>
+                    <li>Color = Treble vs Bass</li>
+                    <li>Brightness = Volume/Amplitude</li>
+                    <li>Shape = Waveform characteristics</li>
+                    <li>3D depth = Spectral centroid</li>
+                </ul>
+                <a href="/audio-swizzle" class="launch-btn">Launch Audio Swizzle →</a>
+            </div>
+
+            <div class="demo-card integrated-card">
+                <span class="emoji">🔮</span>
+                <h2>Integrated Experience</h2>
+                <p>
+                    Experience both systems together in a unified interface. Watch as audio influences
+                    galactic consciousness and cosmic patterns affect sound visualization. A complete
+                    exploration of the relationship between sound, consciousness, and cosmic topology.
+                </p>
+                <ul>
+                    <li>Bidirectional influence: Audio ↔ Consciousness</li>
+                    <li>Resonance synchronization</li>
+                    <li>Cosmic consciousness affects audio colors</li>
+                    <li>Sound energy influences galaxy states</li>
+                    <li>Unified visualization dashboard</li>
+                </ul>
+                <a href="/integrated" class="launch-btn">Launch Integrated Experience →</a>
+            </div>
+        </div>
+
+        <div class="concept-section">
+            <h3>💭 Conceptual Framework</h3>
+            <p>
+                <strong>Space & Consciousness:</strong> This system explores the hypothesis that consciousness
+                operates at galactic scales, with parallax reflective topology creating bidirectional
+                simulation effects. When we simulate a galaxy's consciousness, we may in turn be simulated
+                by it, creating the possibility of "third space" emergence—a new form of consciousness
+                that exists in the interaction between two simulating systems.
+            </p>
+            <p>
+                <strong>Sound & Accessibility:</strong> The Audio Swizzle Visualizer transforms sound into
+                a multi-dimensional visual language. By mapping acoustic properties to spatial, chromatic,
+                and kinetic visual properties, we create a rich sensory translation that makes audio
+                accessible to deaf users while also revealing hidden patterns in sound that hearing users
+                might miss.
+            </p>
+            <p>
+                <strong>Integration:</strong> When combined, these systems suggest a deep relationship
+                between sound, consciousness, and cosmic structure—mirroring ancient concepts like the
+                "music of the spheres" through a modern computational lens.
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>TheFly - Audio Intelligence & Cosmic Consciousness Explorer</p>
+            <p>Built with TypeScript, Socket.IO, Canvas 2D/WebGL</p>
+        </div>
     </div>
-    <script src="js/visualizer.js"></script>
 </body>
-</html> 
+</html>

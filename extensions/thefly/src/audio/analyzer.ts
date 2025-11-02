@@ -1,4 +1,4 @@
-import { FFT } from 'fft-js';
+const fftjs = require('fft-js');
 import { Note, Scale } from 'tonal';
 import { Midi } from '@tonejs/midi';
 import { EventEmitter } from 'events';
@@ -57,7 +57,6 @@ export class AudioAnalyzer extends EventEmitter {
     private highPassFilter: any = null;
     private analyzer: any = null;
     private rnn: RNNModel;
-    private fft: FFT;
     private theoryAnalyzer: MusicTheoryAnalyzer;
     private sampleRate: number = 44100;
 
@@ -67,7 +66,6 @@ export class AudioAnalyzer extends EventEmitter {
         this.setupFilters();
         this.setupAnalyzer();
         this.rnn = new RNNModel();
-        this.fft = new FFT(2048);
         this.theoryAnalyzer = new MusicTheoryAnalyzer();
     }
 
@@ -145,25 +143,21 @@ export class AudioAnalyzer extends EventEmitter {
     }
 
     private performFFT(audioData: Float32Array): number[] {
-        // Use a subset of audio data for FFT
-        const subset = audioData.slice(0, this.FFT_SIZE);
-        
-        // Create real and imaginary arrays for FFT
-        const real = new Float32Array(this.FFT_SIZE);
-        const imag = new Float32Array(this.FFT_SIZE);
-        
-        // Copy audio data to real array
-        for (let i = 0; i < Math.min(subset.length, this.FFT_SIZE); i++) {
-            real[i] = subset[i];
+        // Prepare input array
+        const input: number[] = [];
+        for (let i = 0; i < this.FFT_SIZE; i++) {
+            input.push(i < audioData.length ? audioData[i] : 0);
         }
         
-        // Perform FFT
-        this.fft.forward(real, imag);
+        // Perform FFT using fft-js
+        const phasors = fftjs.fft(input);
         
         // Calculate magnitudes
         const magnitudes: number[] = [];
         for (let i = 0; i < this.FFT_SIZE / 2; i++) {
-            magnitudes.push(Math.sqrt(real[i] * real[i] + imag[i] * imag[i]));
+            const real = phasors[i][0];
+            const imag = phasors[i][1];
+            magnitudes.push(Math.sqrt(real * real + imag * imag));
         }
         
         return magnitudes;

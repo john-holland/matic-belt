@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integrated Experience - Galaxy Consciousness & Audio Swizzle</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 60px 1fr 150px;
+            gap: 2px;
+            background: #111;
+        }
+
+        #header {
+            grid-column: 1 / -1;
+            background: linear-gradient(90deg, #000, #1a0033, #000066, #000);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            border-bottom: 2px solid #0ff;
+        }
+
+        #header h1 {
+            font-size: 24px;
+            color: #0ff;
+        }
+
+        #sync-indicator {
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #666;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
+        #sync-indicator.synced {
+            border-color: #0f0;
+            color: #0f0;
+        }
+
+        .view-container {
+            position: relative;
+            background: #000;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .view-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border: 1px solid #0ff;
+            border-radius: 5px;
+            font-size: 14px;
+            color: #0ff;
+            z-index: 100;
+        }
+
+        #control-panel {
+            grid-column: 1 / -1;
+            background: #111;
+            border-top: 2px solid #0ff;
+            padding: 15px 20px;
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+        }
+
+        .control-group {
+            min-width: 200px;
+        }
+
+        .control-group h3 {
+            font-size: 14px;
+            color: #0ff;
+            margin-bottom: 10px;
+        }
+
+        button {
+            background: #222;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 8px 16px;
+            margin: 3px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border-radius: 3px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #0f0;
+            color: #000;
+        }
+
+        button.active {
+            background: #0f0;
+            color: #000;
+        }
+
+        button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .metric {
+            font-size: 11px;
+            color: #aaa;
+            margin: 3px 0;
+        }
+
+        .metric-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .resonance-bar {
+            width: 100%;
+            height: 8px;
+            background: #222;
+            border: 1px solid #666;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .resonance-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f00, #ff0, #0f0);
+            transition: width 0.5s;
+        }
+
+        #cosmic-influence {
+            min-width: 250px;
+        }
+
+        .influence-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 5px 0;
+        }
+
+        .influence-icon {
+            font-size: 20px;
+        }
+
+        .pulse {
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        .third-space-active {
+            background: rgba(255, 0, 255, 0.2) !important;
+            border-color: #f0f !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="header">
+            <h1>🔮 Integrated Experience: Sound ↔ Consciousness</h1>
+            <div id="sync-indicator">
+                <span id="sync-status">Initializing...</span>
+            </div>
+        </div>
+
+        <div class="view-container" id="galaxy-view">
+            <canvas id="galaxy-canvas"></canvas>
+            <div class="view-label">🌌 Galaxy Consciousness Topology</div>
+        </div>
+
+        <div class="view-container" id="audio-view">
+            <canvas id="audio-canvas"></canvas>
+            <div class="view-label">🎨 Audio Swizzle Visualization</div>
+        </div>
+
+        <div id="control-panel">
+            <div class="control-group">
+                <h3>Galaxy Controls</h3>
+                <button id="startGalaxyBtn">Start Galaxy</button>
+                <button id="stopGalaxyBtn" disabled>Stop Galaxy</button>
+                <div class="metric">
+                    Galaxies: <span class="metric-value" id="numGalaxies">2</span>
+                </div>
+                <div class="metric">
+                    Sim Time: <span class="metric-value" id="simTime">0</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Audio Controls</h3>
+                <button id="startAudioBtn">Start Audio</button>
+                <button id="stopAudioBtn" disabled>Stop Audio</button>
+                <button id="enableMicBtn">Enable Mic</button>
+                <div class="metric">
+                    Sources: <span class="metric-value" id="numSources">0</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Test Sounds</h3>
+                <button onclick="playTestTone(220)">A3</button>
+                <button onclick="playTestTone(440)">A4</button>
+                <button onclick="playTestTone(880)">A5</button>
+                <button onclick="playWhiteNoise()">Noise</button>
+            </div>
+
+            <div class="control-group">
+                <h3>Consciousness Injection</h3>
+                <button onclick="injectConsciousness('milkyway', 0.1)">↑ Milky Way</button>
+                <button onclick="injectConsciousness('sagittarius_a', 0.1)">↑ Sag A*</button>
+            </div>
+
+            <div class="control-group" id="cosmic-influence">
+                <h3>Cosmic Influence</h3>
+                <div class="influence-indicator">
+                    <span class="influence-icon">🎵</span>
+                    <span>Audio → Galaxy</span>
+                </div>
+                <div class="resonance-bar">
+                    <div class="resonance-fill" id="audioInfluence" style="width: 0%"></div>
+                </div>
+                <div class="influence-indicator">
+                    <span class="influence-icon">🌌</span>
+                    <span>Galaxy → Audio</span>
+                </div>
+                <div class="resonance-bar">
+                    <div class="resonance-fill" id="galaxyInfluence" style="width: 0%"></div>
+                </div>
+                <div class="metric">
+                    Resonance: <span class="metric-value" id="resonanceValue">0.00</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>System Status</h3>
+                <div class="metric">
+                    Avg Consciousness: <span class="metric-value" id="avgConsciousness">0.00</span>
+                </div>
+                <div class="metric">
+                    Audio Energy: <span class="metric-value" id="audioEnergy">0.00</span>
+                </div>
+                <div class="metric" id="thirdSpaceStatus">
+                    Third Space: <span class="metric-value">Dormant</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Canvas setup
+        const galaxyCanvas = document.getElementById('galaxy-canvas');
+        const galaxyCtx = galaxyCanvas.getContext('2d');
+        const audioCanvas = document.getElementById('audio-canvas');
+        const audioCtx = audioCanvas.getContext('2d');
+
+        let galaxyWidth, galaxyHeight, audioWidth, audioHeight;
+        
+        function resizeCanvases() {
+            const rect = document.getElementById('galaxy-view').getBoundingClientRect();
+            galaxyWidth = galaxyCanvas.width = rect.width;
+            galaxyHeight = galaxyCanvas.height = rect.height;
+            
+            const audioRect = document.getElementById('audio-view').getBoundingClientRect();
+            audioWidth = audioCanvas.width = audioRect.width;
+            audioHeight = audioCanvas.height = audioRect.height;
+        }
+        resizeCanvases();
+        window.addEventListener('resize', resizeCanvases);
+
+        // State
+        let socket = null;
+        let galaxyState = null;
+        let audioFrame = null;
+        let cosmicInfluence = null;
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let testOscillator = null;
+        
+        // Trail buffer for motion history
+        const trailBuffers = new Map(); // sourceId -> array of past positions
+        const TRAIL_LENGTH = 8; // Number of trail segments
+
+        // Connect to server
+        function connectToServer() {
+            socket = io();
+
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                document.getElementById('sync-status').textContent = 'Connected';
+                document.getElementById('sync-indicator').classList.add('synced');
+            });
+
+            socket.on('galaxyUpdate', (state) => {
+                galaxyState = state;
+                updateGalaxyMetrics();
+                renderGalaxy();
+            });
+
+            socket.on('visualizationFrame', (frame) => {
+                audioFrame = frame;
+                updateAudioMetrics();
+                renderAudio();
+            });
+
+            socket.on('thirdSpaceEmerged', (thirdSpace) => {
+                document.getElementById('thirdSpaceStatus').innerHTML = 
+                    'Third Space: <span class="metric-value pulse">EMERGED! ✨</span>';
+                document.getElementById('cosmic-influence').classList.add('third-space-active');
+            });
+
+            socket.on('cosmicInfluence', (influence) => {
+                cosmicInfluence = influence;
+                updateCosmicInfluence();
+            });
+
+            socket.on('resonanceSync', (sync) => {
+                document.getElementById('resonanceValue').textContent = sync.resonance.toFixed(3);
+                document.getElementById('audioInfluence').style.width = (sync.audioEnergy * 100) + '%';
+                document.getElementById('galaxyInfluence').style.width = (sync.cosmicEnergy * 10) + '%';
+                
+                if (sync.synchronized) {
+                    document.getElementById('sync-status').textContent = 'SYNCHRONIZED ✨';
+                } else {
+                    document.getElementById('sync-status').textContent = 'Connected';
+                }
+            });
+        }
+
+        // Controls
+        document.getElementById('startGalaxyBtn').onclick = () => {
+            socket.emit('startGalaxySimulation');
+            document.getElementById('startGalaxyBtn').disabled = true;
+            document.getElementById('stopGalaxyBtn').disabled = false;
+        };
+
+        document.getElementById('stopGalaxyBtn').onclick = () => {
+            socket.emit('stopGalaxySimulation');
+            document.getElementById('startGalaxyBtn').disabled = false;
+            document.getElementById('stopGalaxyBtn').disabled = true;
+        };
+
+        document.getElementById('startAudioBtn').onclick = () => {
+            if (!analyser) {
+                alert('Please enable microphone or play a test tone first');
+                return;
+            }
+            // Register source BEFORE starting
+            socket.emit('registerAudioSource', { id: 'microphone', name: 'Microphone', color: '#00ff00' });
+            socket.emit('startAudioSwizzle', { mode: '2d' });
+            document.getElementById('startAudioBtn').disabled = true;
+            document.getElementById('stopAudioBtn').disabled = false;
+        };
+
+        document.getElementById('stopAudioBtn').onclick = () => {
+            socket.emit('stopAudioSwizzle');
+            document.getElementById('startAudioBtn').disabled = false;
+            document.getElementById('stopAudioBtn').disabled = true;
+        };
+
+        document.getElementById('enableMicBtn').onclick = async () => {
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 2048;
+                }
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+                
+                // Register the microphone source immediately
+                socket.emit('registerAudioSource', { id: 'microphone', name: 'Microphone', color: '#00ff00' });
+                
+                document.getElementById('enableMicBtn').textContent = 'Mic Active ✓';
+                document.getElementById('enableMicBtn').classList.add('active');
+                document.getElementById('enableMicBtn').disabled = true;
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        };
+
+        function playTestTone(freq) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+            }
+            
+            if (testOscillator) testOscillator.stop();
+
+            testOscillator = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            testOscillator.frequency.value = freq;
+            testOscillator.type = 'sine';
+            gain.gain.value = 0.3;
+            
+            testOscillator.connect(gain);
+            gain.connect(analyser);
+            gain.connect(audioContext.destination);
+            testOscillator.start();
+            
+            setTimeout(() => {
+                if (testOscillator) {
+                    testOscillator.stop();
+                    testOscillator = null;
+                }
+            }, 1500);
+        }
+
+        function playWhiteNoise() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+            }
+            
+            if (testOscillator) testOscillator.stop();
+
+            const bufferSize = audioContext.sampleRate * 2;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+            const source = audioContext.createBufferSource();
+            const gain = audioContext.createGain();
+            source.buffer = buffer;
+            gain.gain.value = 0.1;
+            
+            source.connect(gain);
+            gain.connect(analyser);
+            gain.connect(audioContext.destination);
+            source.start();
+            testOscillator = source;
+        }
+
+        function injectConsciousness(galaxyId, amount) {
+            socket.emit('injectConsciousness', { galaxyId, amount });
+        }
+
+        // Update metrics
+        function updateGalaxyMetrics() {
+            if (!galaxyState) return;
+            document.getElementById('numGalaxies').textContent = galaxyState.galaxies.length;
+            document.getElementById('simTime').textContent = galaxyState.simulationTime;
+            
+            const avg = galaxyState.galaxies.reduce((sum, g) => sum + g.consciousness, 0) / galaxyState.galaxies.length;
+            document.getElementById('avgConsciousness').textContent = avg.toFixed(3);
+        }
+
+        function updateAudioMetrics() {
+            if (!audioFrame) return;
+            document.getElementById('numSources').textContent = audioFrame.elements.length;
+            
+            const energy = audioFrame.elements.reduce((sum, e) => sum + e.amplitude, 0) / (audioFrame.elements.length || 1);
+            document.getElementById('audioEnergy').textContent = energy.toFixed(3);
+        }
+
+        function updateCosmicInfluence() {
+            if (!cosmicInfluence) return;
+            // Visual feedback for cosmic influence
+            audioCanvas.style.filter = `hue-rotate(${cosmicInfluence.consciousnessLevel * 180}deg)`;
+        }
+
+        // Process audio
+        function processAudio() {
+            if (!analyser) return;
+
+            const bufferLength = analyser.fftSize;
+            const dataArray = new Float32Array(bufferLength);
+            analyser.getFloatTimeDomainData(dataArray);
+
+            socket.emit('audioData', {
+                sourceId: 'microphone',
+                audioData: Array.from(dataArray),
+                sampleRate: audioContext.sampleRate
+            });
+        }
+
+        // Render galaxy
+        function renderGalaxy() {
+            if (!galaxyState) return;
+
+            galaxyCtx.fillStyle = '#000';
+            galaxyCtx.fillRect(0, 0, galaxyWidth, galaxyHeight);
+
+            const centerX = galaxyWidth / 2;
+            const centerY = galaxyHeight / 2;
+            const scale = Math.min(galaxyWidth, galaxyHeight) / 4;
+
+            // Draw connections
+            galaxyState.parallaxMappings.forEach(mapping => {
+                const g1 = galaxyState.galaxies.find(g => g.id === mapping.sourceGalaxy);
+                const g2 = galaxyState.galaxies.find(g => g.id === mapping.targetGalaxy);
+                
+                if (g1 && g2) {
+                    const x1 = centerX + (g1.position.x / 1e18) * scale;
+                    const y1 = centerY + (g1.position.y / 1e18) * scale;
+                    const x2 = centerX + (g2.position.x / 1e18) * scale;
+                    const y2 = centerY + (g2.position.y / 1e18) * scale;
+
+                    galaxyCtx.strokeStyle = `rgba(0, 255, 255, ${mapping.informationFlow})`;
+                    galaxyCtx.lineWidth = 2;
+                    galaxyCtx.beginPath();
+                    galaxyCtx.moveTo(x1, y1);
+                    galaxyCtx.lineTo(x2, y2);
+                    galaxyCtx.stroke();
+                }
+            });
+
+            // Draw third space
+            if (galaxyState.thirdSpace) {
+                const radius = 50 + galaxyState.thirdSpace.consciousnessLevel * 80;
+                const alpha = galaxyState.thirdSpace.annealingProgress;
+                
+                galaxyCtx.fillStyle = `rgba(255, 0, 255, ${alpha * 0.3})`;
+                galaxyCtx.beginPath();
+                galaxyCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                galaxyCtx.fill();
+            }
+
+            // Draw galaxies
+            galaxyState.galaxies.forEach(galaxy => {
+                const x = centerX + (galaxy.position.x / 1e18) * scale;
+                const y = centerY + (galaxy.position.y / 1e18) * scale;
+                const size = Math.log10(galaxy.mass) * 3 + galaxy.consciousness * 20;
+
+                const gradient = galaxyCtx.createRadialGradient(x, y, 0, x, y, size);
+                gradient.addColorStop(0, `rgba(${galaxy.consciousness * 255}, 128, 255, 1)`);
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                galaxyCtx.fillStyle = gradient;
+                galaxyCtx.beginPath();
+                galaxyCtx.arc(x, y, size, 0, Math.PI * 2);
+                galaxyCtx.fill();
+            });
+        }
+
+        // Render audio
+        function renderAudio() {
+            if (!audioFrame) return;
+
+            audioCtx.fillStyle = '#000';
+            audioCtx.fillRect(0, 0, audioWidth, audioHeight);
+
+            audioFrame.elements.forEach(element => {
+                // Update trail buffer
+                if (!trailBuffers.has(element.sourceId)) {
+                    trailBuffers.set(element.sourceId, []);
+                }
+                
+                const trail = trailBuffers.get(element.sourceId);
+                const currentPos = {
+                    x: element.x * audioWidth,
+                    y: audioHeight - (element.y * audioHeight),
+                    size: element.size * 40 + 15,
+                    color: element.color,
+                    brightness: element.brightness,
+                    rotation: element.rotation
+                };
+                
+                // Add current position to trail
+                trail.unshift(currentPos);
+                if (trail.length > TRAIL_LENGTH) {
+                    trail.pop();
+                }
+
+                // Draw trail (oldest to newest)
+                for (let i = trail.length - 1; i >= 0; i--) {
+                    const pos = trail[i];
+                    const age = i;
+                    const ageFactor = 1 - (age / TRAIL_LENGTH); // 1.0 = newest, 0.0 = oldest
+                    
+                    // Progressive falloff
+                    const alpha = element.brightness * ageFactor * ageFactor; // Quadratic falloff
+                    const trailSize = pos.size * (0.5 + ageFactor * 0.5); // Shrink with age
+                    
+                    const gradient = audioCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, trailSize);
+                    const color = `rgba(${pos.color.r}, ${pos.color.g}, ${pos.color.b}, ${alpha})`;
+                    gradient.addColorStop(0, color);
+                    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                    audioCtx.fillStyle = gradient;
+                    audioCtx.beginPath();
+                    audioCtx.arc(pos.x, pos.y, trailSize, 0, Math.PI * 2);
+                    audioCtx.fill();
+                }
+            });
+        }
+
+        // Animation loop
+        function animate() {
+            renderGalaxy();
+            renderAudio();
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        connectToServer();
+        animate();
+        setInterval(processAudio, 50);
+    </script>
+</body>
+</html>
+

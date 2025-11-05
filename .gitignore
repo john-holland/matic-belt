@@ -84,3 +84,7 @@ node_modules
 
 # Git
 .git/objects/pack/
+
+# Access tokens and API keys
+**/mud_access_token
+extensions/thefly/src/mud_access_token

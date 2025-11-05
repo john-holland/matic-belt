@@ -1,23 +1,98 @@
+// Singleton pattern to prevent multiple instances
+let mudInterfaceInstance = null;
+
 class MUDInterface {
     constructor() {
+        // Return existing instance if one exists
+        if (mudInterfaceInstance) {
+            console.log('⚠️ MUDInterface instance already exists, returning existing instance');
+            return mudInterfaceInstance;
+        }
+        
         this.socket = io();
         this.output = document.getElementById('output');
         this.input = document.getElementById('command-input');
         this.history = [];
         this.historyIndex = -1;
         this.tempInput = '';
+        this.username = null;
+        this.isLoggedIn = false;
+        this.password = null; // Store password for reconnection
+        this.oldSocketId = null;
+        
+        // Store instance
+        mudInterfaceInstance = this;
+        
+        console.log('🆕 Creating new MUDInterface instance:', {
+            socketId: this.socket.id,
+            outputExists: !!this.output,
+            inputExists: !!this.input
+        });
+        
         this.setupEventListeners();
         this.initialize();
+        this.showLoginPrompt();
+    }
+    
+    // Static method to get or create instance
+    static getInstance() {
+        if (!mudInterfaceInstance) {
+            mudInterfaceInstance = new MUDInterface();
+        }
+        return mudInterfaceInstance;
     }
 
     setupEventListeners() {
         // Handle Enter key
         this.input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
+                // Don't allow commands if not logged in
+                if (!this.isLoggedIn) {
+                    console.warn('⚠️ Command blocked: Not logged in', {
+                        socketId: this.socket.id,
+                        username: this.username,
+                        isLoggedIn: this.isLoggedIn,
+                        socketConnected: this.socket.connected
+                    });
+                    this.addMessage('Please login first', 'error');
+                    this.showLoginPrompt();
+                    return;
+                }
+                
                 const command = this.input.value.trim();
                 if (command) {
+                    // Double-check we're still logged in before sending
+                    if (!this.isLoggedIn || !this.username) {
+                        console.error('❌ Login state lost before command send!', {
+                            socketId: this.socket.id,
+                            username: this.username,
+                            isLoggedIn: this.isLoggedIn
+                        });
+                        this.addMessage('Session lost. Please login again.', 'error');
+                        this.showLoginPrompt();
+                        return;
+                    }
+                    
+                    console.log('📤 Sending command:', {
+                        command: command.substring(0, 50),
+                        socketId: this.socket.id,
+                        username: this.username,
+                        isLoggedIn: this.isLoggedIn,
+                        socketConnected: this.socket.connected
+                    });
+                    
+                    // Always emit the command first
                     this.socket.emit('command', command);
-                    this.addMessage(command, 'user');
+                    
+                    // Check if this is a recognized command (don't show locally if it will be broadcast)
+                    const isRecognizedCommand = command.match(/^(help|github|ai|wifi|scan|ar|!history)/i);
+                    
+                    // Only show message locally if it's NOT a recognized command (unrecognized commands are broadcast)
+                    // AND we're logged in (to avoid showing messages that will fail)
+                    if (!isRecognizedCommand && this.isLoggedIn) {
+                        // Show own message locally (won't be duplicated by broadcast since we exclude sender)
+                        this.addMessage(command, 'user', this.username);
+                    }
                     this.input.value = '';
                     this.historyIndex = -1;
                     this.tempInput = '';
@@ -38,7 +113,189 @@ class MUDInterface {
 
         // Load history when connected
         this.socket.on('connect', () => {
+            console.log('🔌 Socket connected:', {
+                socketId: this.socket.id,
+                isLoggedIn: this.isLoggedIn,
+                username: this.username
+            });
+            // Don't request history until logged in
+            if (this.isLoggedIn) {
+                this.socket.emit('get-history');
+            }
+        });
+        
+        // Handle disconnect
+        this.socket.on('disconnect', () => {
+            console.warn('⚠️ Socket disconnected');
+            this.isLoggedIn = false;
+            this.showLoginPrompt();
+        });
+        
+        // Handle reconnect
+        this.socket.on('reconnect', (attemptNumber) => {
+            console.log('🔄 Socket reconnected:', {
+                socketId: this.socket.id,
+                attemptNumber: attemptNumber,
+                isLoggedIn: this.isLoggedIn,
+                username: this.username,
+                oldSocketId: this.oldSocketId
+            });
+            
+            // Socket ID changes on reconnect, so we need to re-authenticate
+            if (this.username && this.password) {
+                console.log('🔄 Re-authenticating after reconnect...');
+                this.isLoggedIn = false;
+                this.socket.emit('login', { username: this.username, password: this.password });
+            } else if (this.username) {
+                // If we don't have password stored, force re-login
+                this.addMessage('Connection lost. Please login again.', 'error');
+                this.showLoginPrompt();
+            }
+        });
+        
+        // Track socket ID changes
+        this.socket.on('connect', () => {
+            console.log('🔌 Socket connect event:', {
+                socketId: this.socket.id,
+                oldSocketId: this.oldSocketId,
+                isLoggedIn: this.isLoggedIn,
+                username: this.username,
+                changed: this.oldSocketId && this.oldSocketId !== this.socket.id
+            });
+            
+            if (this.oldSocketId && this.oldSocketId !== this.socket.id) {
+                console.warn('⚠️ Socket ID changed!', {
+                    old: this.oldSocketId,
+                    new: this.socket.id,
+                    isLoggedIn: this.isLoggedIn
+                });
+                // If socket ID changed and we were logged in, we need to re-authenticate
+                if (this.isLoggedIn) {
+                    this.isLoggedIn = false;
+                    if (this.username && this.password) {
+                        console.log('🔄 Re-authenticating due to socket ID change...');
+                        // Small delay to ensure socket is fully connected
+                        setTimeout(() => {
+                            this.socket.emit('login', { username: this.username, password: this.password });
+                        }, 100);
+                    } else {
+                        this.addMessage('Connection reset. Please login again.', 'error');
+                        this.showLoginPrompt();
+                    }
+                }
+            }
+            this.oldSocketId = this.socket.id;
+        });
+        
+        // Handle login events
+        this.socket.on('login_success', (data) => {
+            console.log('✅ Login success received:', data);
+            
+            // Verify socket ID matches
+            if (data.socketId && data.socketId !== this.socket.id) {
+                console.error('⚠️ Socket ID mismatch on login success!', {
+                    received: data.socketId,
+                    current: this.socket.id,
+                    oldSocketId: this.oldSocketId,
+                    username: this.username
+                });
+                
+                // This shouldn't happen if we're using the same socket instance
+                // But if it does, we need to re-authenticate on the current socket
+                if (this.username && this.password) {
+                    console.log('🔄 Re-authenticating due to socket ID mismatch...');
+                    // Wait a bit for socket to stabilize
+                    setTimeout(() => {
+                        if (this.socket.connected) {
+                            this.socket.emit('login', { username: this.username, password: this.password });
+                        } else {
+                            console.error('❌ Socket not connected, cannot re-authenticate');
+                            this.addMessage('Connection issue. Please login again.', 'error');
+                            this.showLoginPrompt();
+                        }
+                    }, 200);
+                    return;
+                } else {
+                    console.error('❌ Cannot re-authenticate: missing credentials');
+                    this.addMessage('Session mismatch. Please login again.', 'error');
+                    this.showLoginPrompt();
+                    return;
+                }
+            }
+            
+            this.username = data.username;
+            this.isLoggedIn = true;
+            this.oldSocketId = this.socket.id; // Store current socket ID
+            
+            console.log('✅ Login state updated:', {
+                username: this.username,
+                isLoggedIn: this.isLoggedIn,
+                socketId: this.socket.id,
+                serverSocketId: data.socketId,
+                socketConnected: this.socket.connected
+            });
+            this.addMessage(`✅ Logged in as ${data.username}`, 'success');
+            if (data.socketId) {
+                this.addMessage(`Session ID: ${data.socketId}`, 'system');
+                if (data.socketId !== this.socket.id) {
+                    this.addMessage(`⚠️ Warning: Socket ID mismatch (server: ${data.socketId}, client: ${this.socket.id})`, 'error');
+                }
+            }
+            if (data.isNewUser) {
+                this.addMessage('Welcome to the MUD! Type "help" for available commands.', 'system');
+            }
+            // Request history now that we're logged in
             this.socket.emit('get-history');
+            // Hide login prompt if it exists
+            this.hideLoginPrompt();
+            
+            // Verify session is active by checking socket connection
+            console.log('🔍 Verifying session:', {
+                socketId: this.socket.id,
+                serverSocketId: data.socketId,
+                username: this.username,
+                isLoggedIn: this.isLoggedIn,
+                socketConnected: this.socket.connected,
+                matches: data.socketId === this.socket.id
+            });
+        });
+        
+        this.socket.on('login_error', (data) => {
+            this.addMessage(`❌ Login failed: ${data.message}`, 'error');
+            this.showLoginPrompt();
+        });
+        
+        // Handle chat messages (broadcast from all users)
+        // Note: Our own messages are excluded from broadcast, so we only receive others' messages here
+        this.socket.on('chat_message', (data) => {
+            // Only show if it's not our own message
+            // Server excludes sender from broadcast, so we should only receive messages from others
+            if (data.sender && data.sender !== this.username) {
+                // Pass content and sender separately - addMessage will handle the formatting
+                this.addMessage(data.content, 'system', data.sender);
+            } else if (!data.sender || data.sender === this.username) {
+                // This shouldn't happen since server excludes sender, but handle gracefully
+                console.warn('⚠️ Received own message in broadcast (should not happen):', data);
+            }
+        });
+        
+        // Handle user presence events
+        this.socket.on('user_joined', (data) => {
+            if (data.username !== this.username) {
+                this.addMessage(`👋 ${data.username} joined the MUD`, 'system');
+            }
+        });
+        
+        this.socket.on('user_left', (data) => {
+            if (data.username !== this.username) {
+                this.addMessage(`👋 ${data.username} left the MUD`, 'system');
+            }
+        });
+        
+        this.socket.on('active_users', (data) => {
+            if (data.users && data.users.length > 0) {
+                this.addMessage(`Active users: ${data.users.join(', ')}`, 'system');
+            }
         });
 
         this.socket.on('history-response', (data) => {
@@ -139,17 +396,23 @@ class MUDInterface {
                 sourceLabel = ' (Camera)';
             }
             
+            // Show sender if available (only if it's not our own message)
+            // Note: Server sends directly to sender, so we won't see sender info on our own messages
+            const isOwnMessage = data.sender === this.username;
+            const senderInfo = (data.sender && !isOwnMessage) ? ` [from ${data.sender}]` : '';
+            const isAITalk = data.isAITalk ? ` [AI-to-AI: ${data.sourceAI} → ${data.type}]` : '';
+            
             // Only show question if it's explicitly provided, otherwise show AI type
             if (data.question || data.prompt) {
                 const question = document.createElement('div');
-                question.textContent = `Q: ${data.question || data.prompt}`;
+                question.textContent = `Q: ${data.question || data.prompt}${senderInfo}${isAITalk}`;
                 question.style.fontWeight = 'bold';
                 question.style.marginBottom = '5px';
                 aiMessage.appendChild(question);
             } else {
                 // Show AI type as header
                 const header = document.createElement('div');
-                header.textContent = `${data.type ? data.type.toUpperCase() : 'AI'} Response${sourceLabel}:`;
+                header.textContent = `${data.type ? data.type.toUpperCase() : 'AI'} Response${sourceLabel}${senderInfo}${isAITalk}:`;
                 header.style.fontWeight = 'bold';
                 header.style.marginBottom = '5px';
                 header.style.color = '#ffc800';
@@ -339,16 +602,118 @@ class MUDInterface {
         this.input.value = this.history[reversedIndex] || '';
     }
 
-    addMessage(message, type) {
+    addMessage(message, type = 'system', sender = null) {
         const messageElement = document.createElement('div');
         messageElement.className = `message ${type}`;
-        messageElement.textContent = message;
+        
+        // If sender is provided and it's not our own message, show sender info
+        if (sender && sender !== this.username && type !== 'user') {
+            const senderLabel = document.createElement('span');
+            senderLabel.textContent = `${sender}: `;
+            senderLabel.style.color = '#888';
+            senderLabel.style.fontSize = '0.9em';
+            messageElement.appendChild(senderLabel);
+        }
+        
+        const textNode = document.createTextNode(message);
+        messageElement.appendChild(textNode);
+        
+        // Style own messages differently
+        if (sender === this.username && type === 'user') {
+            messageElement.style.textAlign = 'right';
+            messageElement.style.color = '#4CAF50';
+        }
+        
         this.output.appendChild(messageElement);
         this.output.scrollTop = this.output.scrollHeight;
+    }
+    
+    showLoginPrompt() {
+        // Check if login form already exists
+        if (document.getElementById('login-form')) {
+            return;
+        }
+        
+        const loginForm = document.createElement('div');
+        loginForm.id = 'login-form';
+        loginForm.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a1a; padding: 20px; border: 2px solid #333; border-radius: 8px; z-index: 1000; min-width: 300px;';
+        
+        const title = document.createElement('h3');
+        title.textContent = 'Login to MUD';
+        title.style.cssText = 'margin-top: 0; color: #fff;';
+        loginForm.appendChild(title);
+        
+        const usernameLabel = document.createElement('label');
+        usernameLabel.textContent = 'Username:';
+        usernameLabel.style.cssText = 'display: block; color: #fff; margin-bottom: 5px;';
+        loginForm.appendChild(usernameLabel);
+        
+        const usernameInput = document.createElement('input');
+        usernameInput.type = 'text';
+        usernameInput.id = 'login-username';
+        usernameInput.style.cssText = 'width: 100%; padding: 8px; margin-bottom: 10px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; box-sizing: border-box;';
+        usernameInput.autofocus = true;
+        loginForm.appendChild(usernameInput);
+        
+        const passwordLabel = document.createElement('label');
+        passwordLabel.textContent = 'Password:';
+        passwordLabel.style.cssText = 'display: block; color: #fff; margin-bottom: 5px;';
+        loginForm.appendChild(passwordLabel);
+        
+        const passwordInput = document.createElement('input');
+        passwordInput.type = 'password';
+        passwordInput.id = 'login-password';
+        passwordInput.style.cssText = 'width: 100%; padding: 8px; margin-bottom: 15px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; box-sizing: border-box;';
+        loginForm.appendChild(passwordInput);
+        
+        const loginButton = document.createElement('button');
+        loginButton.textContent = 'Login';
+        loginButton.style.cssText = 'width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;';
+        loginButton.onclick = () => {
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+            
+            if (!username || !password) {
+                alert('Please enter both username and password');
+                return;
+            }
+            
+            // Store credentials for reconnection
+            this.username = username.toLowerCase();
+            this.password = password;
+            
+            console.log('📤 Sending login:', {
+                username: this.username,
+                socketId: this.socket.id,
+                socketConnected: this.socket.connected
+            });
+            
+            this.socket.emit('login', { username, password });
+        };
+        loginForm.appendChild(loginButton);
+        
+        // Allow Enter key to submit
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginButton.click();
+            }
+        });
+        
+        document.body.appendChild(loginForm);
+    }
+    
+    hideLoginPrompt() {
+        const loginForm = document.getElementById('login-form');
+        if (loginForm) {
+            loginForm.remove();
+        }
     }
 }
 
 // Initialize MUD interface when page loads
 window.addEventListener('load', () => {
-    new MUDInterface();
+    // Use singleton pattern to prevent multiple instances
+    if (!window.mudInterface) {
+        window.mudInterface = MUDInterface.getInstance();
+    }
 }); 

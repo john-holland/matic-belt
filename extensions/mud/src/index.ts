@@ -33,6 +33,20 @@ interface MUDMessage {
     sender?: string;
 }
 
+interface UserSession {
+    username: string;
+    socketId: string;
+    connectedAt: number;
+    lastActivity: number;
+    passwordHash: string; // Ephemeral - only in memory
+}
+
+interface ActiveUser {
+    username: string;
+    socketIds: string[];  // Multiple sockets per user
+    joinedAt: number;
+}
+
 class MUDServer {
     private app = express();
     private server = createServer(this.app);
@@ -55,6 +69,10 @@ class MUDServer {
     private conversationHistory: Map<string, Array<{ role: string; content: string }>> = new Map();
     // Map socket IDs to user IDs for shared conversation history
     private socketToUser: Map<string, string> = new Map();
+    // Session management for anonymous users
+    private activeSessions: Map<string, UserSession> = new Map(); // socketId -> session
+    private activeUsers: Map<string, ActiveUser> = new Map(); // username -> user info
+    private bcrypt: any;
     private wifiManager: WiFiManagerWDUtil | null = null;
     private wifiInitialized: boolean = false;
     private wifiScanInterval: NodeJS.Timeout | null = null;
@@ -247,19 +265,52 @@ class MUDServer {
 
     private setupSocketHandlers() {
         this.io.on('connection', (socket: Socket) => {
-            console.log('Client connected:', socket.id);
+            console.log(`🔌 Client connected: ${socket.id}`, {
+                totalSessions: this.activeSessions.size,
+                connectedSockets: Array.from(this.activeSessions.keys()),
+                totalConnectedSockets: this.io.sockets.sockets.size
+            });
             
-            // Generate or retrieve a user ID for this socket
-            // This allows sharing conversation history across multiple sockets from the same user
-            // For now, we'll use socket.id, but we can enhance this with actual user authentication later
-            const userId = socket.handshake.query.userId as string || socket.id;
-            this.socketToUser.set(socket.id, userId);
+            // Handle disconnection events
+            socket.on('disconnect', (reason) => {
+                console.log(`🔌 Socket ${socket.id} disconnected: ${reason}`);
+                this.handleDisconnect(socket.id);
+            });
+
+            // Handle login before allowing any commands
+            socket.on('login', async (data: { username: string, password: string }) => {
+                await this.handleLogin(socket, data.username, data.password);
+            });
 
             socket.on('initialize', () => {
+                // Only allow initialize if logged in
+                if (!this.isAuthenticated(socket.id)) {
+                    socket.emit('error', { message: 'Please login first. Send login event with username and password.' });
+                    return;
+                }
                 this.handleInitialize(socket);
             });
 
             socket.on('command', async (command: string) => {
+                // Require authentication before processing commands
+                console.log(`📨 Command received from socket ${socket.id}:`, {
+                    command: command.substring(0, 50),
+                    hasSession: this.activeSessions.has(socket.id),
+                    username: this.getUsername(socket.id)
+                });
+                
+                if (!this.isAuthenticated(socket.id)) {
+                    console.error(`❌ Command rejected: No session for socket ${socket.id}`);
+                    socket.emit('error', { message: 'Please login first. Send login event with username and password.' });
+                    return;
+                }
+                
+                // Update last activity
+                const session = this.activeSessions.get(socket.id);
+                if (session) {
+                    session.lastActivity = Date.now();
+                }
+                
                 // Save command to history (unless it's a history command itself)
                 if (!command.startsWith('!history')) {
                     this.historyManager.addCommand(command);
@@ -399,16 +450,238 @@ class MUDServer {
                 socket.emit('wifi:scanning-stopped');
             });
 
+            // Note: Disconnect handler is now registered at the connection level above
+            // to ensure it's always called, even if login hasn't completed yet
+            
+            // Clean up WiFi scanning interval if client disconnects
             socket.on('disconnect', () => {
-                console.log('Client disconnected:', socket.id);
-                // Clean up interval if client disconnects
                 if (this.wifiScanInterval) {
                     clearInterval(this.wifiScanInterval);
                     this.wifiScanInterval = null;
                 }
-                // Clean up conversation history (optional - can keep for persistence)
-                // this.conversationHistory.delete(socket.id);
+                
+                // Clean up WiFi scanning interval if this was the last client
+                if (this.io.sockets.sockets.size === 0 && this.wifiScanInterval) {
+                    clearInterval(this.wifiScanInterval);
+                    this.wifiScanInterval = null;
+                }
             });
+        });
+    }
+
+    // Check if socket is authenticated
+    private isAuthenticated(socketId: string): boolean {
+        const isAuth = this.activeSessions.has(socketId);
+        if (!isAuth) {
+            console.log(`⚠️ Authentication check failed for socket ${socketId}. Active sessions:`, Array.from(this.activeSessions.keys()));
+        }
+        return isAuth;
+    }
+    
+    // Get username for a socket
+    private getUsername(socketId: string): string | null {
+        const session = this.activeSessions.get(socketId);
+        return session ? session.username : null;
+    }
+    
+    // Handle user login
+    private async handleLogin(socket: Socket, username: string, password: string): Promise<void> {
+        try {
+            // Validate username
+            if (!username || username.trim().length === 0) {
+                socket.emit('login_error', { message: 'Username is required' });
+                return;
+            }
+            
+            if (username.length > 50) {
+                socket.emit('login_error', { message: 'Username must be 50 characters or less' });
+                return;
+            }
+            
+            // Validate password
+            if (!password || password.length === 0) {
+                socket.emit('login_error', { message: 'Password is required' });
+                return;
+            }
+            
+            const trimmedUsername = username.trim().toLowerCase();
+            
+            // Hash password with bcrypt
+            let passwordHash: string;
+            if (this.bcrypt) {
+                const saltRounds = 10;
+                passwordHash = await this.bcrypt.hash(password, saltRounds);
+            } else {
+                // Fallback: simple hash if bcrypt not available (not secure, but allows testing)
+                console.warn('⚠️ Using fallback password hashing - not secure!');
+                passwordHash = Buffer.from(password).toString('base64');
+            }
+            
+            // Check if user already exists
+            const existingUser = this.activeUsers.get(trimmedUsername);
+            let isNewUser = false;
+            
+            if (existingUser) {
+                // User exists - verify password by checking stored hash
+                // For ephemeral sessions, we'll allow re-authentication with same password
+                // In a real system, you'd verify against stored hash
+                // For anonymous ephemeral, we'll just check if password matches what we stored
+                const existingSession = Array.from(this.activeSessions.values())
+                    .find(s => s.username === trimmedUsername);
+                
+                if (existingSession) {
+                    let isValid = false;
+                    if (this.bcrypt) {
+                        isValid = await this.bcrypt.compare(password, existingSession.passwordHash);
+                    } else {
+                        isValid = passwordHash === existingSession.passwordHash;
+                    }
+                    
+                    if (!isValid) {
+                        socket.emit('login_error', { message: 'Invalid password for existing user' });
+                        return;
+                    }
+                }
+                
+                // Add this socket to existing user
+                existingUser.socketIds.push(socket.id);
+            } else {
+                // New user
+                isNewUser = true;
+                this.activeUsers.set(trimmedUsername, {
+                    username: trimmedUsername,
+                    socketIds: [socket.id],
+                    joinedAt: Date.now()
+                });
+            }
+            
+            // Check if socket is still connected before creating session
+            if (!socket.connected) {
+                console.error(`❌ Cannot create session: socket ${socket.id} is not connected`);
+                socket.emit('login_error', { message: 'Connection lost. Please try again.' });
+                return;
+            }
+            
+            // Create session
+            const session: UserSession = {
+                username: trimmedUsername,
+                socketId: socket.id,
+                connectedAt: Date.now(),
+                lastActivity: Date.now(),
+                passwordHash: passwordHash
+            };
+            
+            this.activeSessions.set(socket.id, session);
+            this.socketToUser.set(socket.id, trimmedUsername);
+            
+            console.log(`✅ User logged in: ${trimmedUsername} (socket: ${socket.id})`);
+            console.log(`📋 Session created:`, {
+                socketId: socket.id,
+                username: trimmedUsername,
+                sessionExists: this.activeSessions.has(socket.id),
+                socketToUserExists: this.socketToUser.has(socket.id),
+                totalSessions: this.activeSessions.size,
+                socketConnected: socket.connected
+            });
+            
+            // Verify session is actually set before emitting success
+            const verifySession = this.activeSessions.get(socket.id);
+            if (!verifySession || verifySession.username !== trimmedUsername) {
+                console.error(`❌ Session verification failed for ${trimmedUsername} on socket ${socket.id}`);
+                socket.emit('login_error', { message: 'Session creation failed. Please try again.' });
+                return;
+            }
+            
+            // Emit login success with full session info
+            socket.emit('login_success', {
+                username: trimmedUsername,
+                isNewUser: isNewUser,
+                socketId: socket.id,
+                sessionId: socket.id // Include session ID for client verification
+            });
+            
+            // Double-check session after emit
+            console.log(`🔍 Session verification after emit:`, {
+                socketId: socket.id,
+                hasSession: this.activeSessions.has(socket.id),
+                sessionUsername: this.activeSessions.get(socket.id)?.username
+            });
+            
+            // Broadcast user join to all clients
+            this.broadcastToAll('user_joined', {
+                username: trimmedUsername,
+                timestamp: Date.now(),
+                isNewUser: isNewUser
+            }, socket.id);
+            
+            // Send current active users list
+            const activeUsersList = Array.from(this.activeUsers.keys());
+            socket.emit('active_users', { users: activeUsersList });
+            
+        } catch (error: any) {
+            console.error('❌ Login error:', error);
+            socket.emit('login_error', { message: `Login failed: ${error.message}` });
+        }
+    }
+    
+    // Handle disconnect and cleanup
+    private handleDisconnect(socketId: string): void {
+        const session = this.activeSessions.get(socketId);
+        
+        console.log(`🔌 Handling disconnect for socket ${socketId}:`, {
+            hasSession: !!session,
+            username: session?.username,
+            totalSessionsBefore: this.activeSessions.size
+        });
+        
+        if (session) {
+            const username = session.username;
+            
+            // Remove session
+            this.activeSessions.delete(socketId);
+            this.socketToUser.delete(socketId);
+            
+            console.log(`🗑️ Session removed for ${username} (socket: ${socketId})`);
+            
+            // Update active users
+            const user = this.activeUsers.get(username);
+            if (user) {
+                user.socketIds = user.socketIds.filter(id => id !== socketId);
+                
+                // If no more sockets for this user, remove user and broadcast leave
+                if (user.socketIds.length === 0) {
+                    this.activeUsers.delete(username);
+                    this.broadcastToAll('user_left', {
+                        username: username,
+                        timestamp: Date.now()
+                    });
+                    console.log(`👋 User left: ${username}`);
+                } else {
+                    console.log(`👤 User ${username} still has ${user.socketIds.length} active socket(s)`);
+                }
+            }
+        } else {
+            console.log(`⚠️ No session found for socket ${socketId} during disconnect`);
+        }
+        
+        console.log(`📊 Sessions after disconnect: ${this.activeSessions.size}`);
+    }
+    
+    // Broadcast to all connected clients
+    private broadcastToAll(event: string, data: any, excludeSocketId?: string): void {
+        if (excludeSocketId) {
+            this.io.except(excludeSocketId).emit(event, data);
+        } else {
+            this.io.emit(event, data);
+        }
+    }
+    
+    // Broadcast a chat message to all clients
+    private broadcastMessage(message: MUDMessage, sender?: string): void {
+        this.broadcastToAll('chat_message', {
+            ...message,
+            sender: sender || 'system',
+            timestamp: message.timestamp || Date.now()
         });
     }
 
@@ -627,12 +900,29 @@ class MUDServer {
                     });
                     break;
                 default:
-                    // Echo back with acknowledgment
-                    socket.emit('message', {
-                        type: 'system',
-                        content: `Command "${command}" received. Type "help" for available commands.`,
-                        timestamp: Date.now()
-                    });
+                    // Unrecognized command - broadcast as chat message to all clients (excluding sender)
+                    const username = this.getUsername(socket.id) || 'unknown';
+                    
+                    // Only broadcast if we have a valid username (user is logged in)
+                    if (username !== 'unknown') {
+                        const chatMessage: MUDMessage = {
+                            type: 'system',
+                            content: trimmedCommand,
+                            timestamp: Date.now(),
+                            sender: username
+                        };
+                        // Broadcast to all except the sender (they'll see their own message via local display)
+                        this.broadcastToAll('chat_message', {
+                            type: 'system',
+                            content: trimmedCommand,
+                            sender: username,
+                            timestamp: Date.now()
+                        }, socket.id);
+                        console.log(`💬 Broadcast message from ${username}: ${trimmedCommand.substring(0, 50)}`);
+                    } else {
+                        // If not logged in, just send error (already sent above, but ensure we don't broadcast)
+                        console.warn(`⚠️ Cannot broadcast message from unauthenticated socket ${socket.id}`);
+                    }
             }
         } catch (error: any) {
             socket.emit('error', { message: error.message || 'Unknown error occurred' });
@@ -1151,14 +1441,22 @@ class MUDServer {
         if (aiTalkMatch) {
             console.log(`🤖 AI wants to talk to ${aiTalkMatch.targetAI}: "${aiTalkMatch.message}"`);
             await this.handleAIToAITalk(socket, aiTalkMatch.targetAI, aiTalkMatch.message, response, aiType);
-            // Still emit the original response so user sees what AI tried to do
-            socket.emit('ai_response', {
+            // Send to sender first, then broadcast to others
+            const username = this.getUsername(socket.id) || 'unknown';
+            const responseData = {
                 type: aiType,
                 response,
                 credits: aiUser.credits,
                 prompt: prompt,
-                isCameraRequest: prompt.includes('ASCII') || prompt.includes('camera feed')
-            });
+                isCameraRequest: prompt.includes('ASCII') || prompt.includes('camera feed'),
+                sender: username
+            };
+            
+            // Send directly to sender
+            socket.emit('ai_response', responseData);
+            
+            // Broadcast to all other clients
+            this.broadcastToAll('ai_response', responseData, socket.id);
             return;
         }
         
@@ -1179,16 +1477,24 @@ class MUDServer {
                 credits: aiUser.credits
             });
             
-            // Emit original response with confirmation prompt
-            socket.emit('ai_response', {
+            // Send to sender first, then broadcast to others
+            const username = this.getUsername(socket.id) || 'unknown';
+            const responseData = {
                 type: aiType,
                 response,
                 credits: aiUser.credits,
                 hasGitHubSearch: true,
                 githubQuery: githubSearchMatch.query,
                 searchId: searchId,
-                requiresConfirmation: true
-            });
+                requiresConfirmation: true,
+                sender: username
+            };
+            
+            // Send directly to sender
+            socket.emit('ai_response', responseData);
+            
+            // Broadcast to all other clients
+            this.broadcastToAll('ai_response', responseData, socket.id);
             
             // Emit confirmation prompt
             socket.emit('github_search_confirmation', {
@@ -1213,13 +1519,28 @@ class MUDServer {
             credits: aiUser.credits
         });
         
+        // Get username for broadcast
+        const username = this.getUsername(socket.id) || 'unknown';
+        
+        // Send response directly to sender (so they see their own AI responses)
         socket.emit('ai_response', {
             type: aiType,
             response,
             credits: aiUser.credits,
             prompt: prompt, // Include the original prompt for display
-            isCameraRequest: isCameraRequest // Flag to help client-side detection
+            isCameraRequest: isCameraRequest, // Flag to help client-side detection
+            sender: username
         });
+        
+        // Broadcast to all other clients (excluding sender to prevent duplicate)
+        this.broadcastToAll('ai_response', {
+            type: aiType,
+            response,
+            credits: aiUser.credits,
+            prompt: prompt, // Include the original prompt for display
+            isCameraRequest: isCameraRequest, // Flag to help client-side detection
+            sender: username
+        }, socket.id); // Exclude sender to prevent duplicate display
         
         console.log('✅ ai_response event emitted');
     }
@@ -1397,7 +1718,7 @@ class MUDServer {
                     
                     if (geminiResponse) {
                         conversation.push({ role: 'model', content: geminiResponse });
-                        this.conversationHistory.set(userKey, conversation);
+                        this.conversationHistory.set(userId, conversation);
                         return geminiResponse;
                     }
                     break;
@@ -1418,7 +1739,7 @@ class MUDServer {
                     if ('text' in claudeText) {
                         const claudeResponseText = claudeText.text;
                         conversation.push({ role: 'model', content: claudeResponseText });
-                        this.conversationHistory.set(userKey, conversation);
+                        this.conversationHistory.set(userId, conversation);
                         return claudeResponseText;
                     }
                     break;
@@ -1467,7 +1788,7 @@ class MUDServer {
                         // Spend a token after successful API call
                         this.tokenTracker.spendTokens('openai', 1);
                         conversation.push({ role: 'model', content: gptContent });
-                        this.conversationHistory.set(userKey, conversation);
+                        this.conversationHistory.set(userId, conversation);
                         return gptContent;
                     }
                     return null;
@@ -1708,14 +2029,23 @@ When you want to communicate with another AI, simply output the command in the f
             this.aiUsers.set(normalizedTargetAI, targetAIUser);
             
             // Emit response
-            socket.emit('ai_response', {
+            // Send to sender first, then broadcast to others
+            const username = this.getUsername(socket.id) || 'unknown';
+            const responseData = {
                 type: normalizedTargetAI,
                 response,
                 credits: targetAIUser.credits,
                 prompt: sourceContext,
                 isAITalk: true,
-                sourceAI: sourceAI || 'user'
-            });
+                sourceAI: sourceAI || username,
+                sender: username
+            };
+            
+            // Send directly to sender
+            socket.emit('ai_response', responseData);
+            
+            // Broadcast to all other clients
+            this.broadcastToAll('ai_response', responseData, socket.id);
             
             console.log(`✅ AI-to-AI message delivered: ${sourceAI || 'user'} → ${normalizedTargetAI}`);
             
@@ -1796,16 +2126,24 @@ When you want to communicate with another AI, simply output the command in the f
                             source: 'ai-requested'
                         });
                         
-                        // Then emit AI's analysis of the results
-                        socket.emit('ai_response', {
+                        // Send to sender first, then broadcast to others
+                        const username = this.getUsername(socket.id) || 'unknown';
+                        const responseData = {
                             type: aiType,
                             response: followUpResponse,
                             credits: aiUser.credits,
                             isFollowUp: true,
                             githubQuery: query,
                             searchId: searchId,
-                            prompt: `GitHub search results for "${query}"`
-                        });
+                            prompt: `GitHub search results for "${query}"`,
+                            sender: username
+                        };
+                        
+                        // Send directly to sender
+                        socket.emit('ai_response', responseData);
+                        
+                        // Broadcast to all other clients
+                        this.broadcastToAll('ai_response', responseData, socket.id);
                     }
                 } else {
                     // Still emit search results even if AI response fails

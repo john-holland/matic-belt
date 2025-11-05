@@ -410,127 +410,56 @@
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
         // Socket.IO connection
-        const socket = io();
+        // Use the MUDInterface's socket instead of creating a new one
+        // This ensures we use the authenticated session
+        function getSocket() {
+            if (window.mudInterface && window.mudInterface.socket) {
+                return window.mudInterface.socket;
+            }
+            console.warn('⚠️ MUDInterface socket not available, creating temporary socket');
+            return io(); // Fallback if MUDInterface not ready
+        }
         
-        // Forward ai_response events to MUDInterface
-        socket.on('ai_response', (data) => {
-            console.log('🔔 AR socket received ai_response, forwarding to MUDInterface:', {
-                hasResponse: !!data.response,
-                type: data.type,
-                isCameraRequest: data.isCameraRequest,
-                responseLength: data.response?.length || 0
+        // Initialize socket after MUDInterface is ready
+        // We'll set up socket listeners when MUDInterface is available
+        let socket = null;
+        
+        // Set up socket once MUDInterface is available
+        function setupSocket() {
+            if (socket && socket === (window.mudInterface?.socket)) {
+                console.log('✅ Socket already set up with MUDInterface');
+                return; // Already set up with correct socket
+            }
+            
+            socket = getSocket();
+            console.log('🔌 AR socket initialized:', {
+                socketId: socket.id,
+                isMUDInterfaceSocket: socket === (window.mudInterface?.socket),
+                mudInterfaceAvailable: !!window.mudInterface
             });
             
-            // Forward to MUDInterface - manually trigger the handler since sockets are separate
-            if (window.mudInterface) {
-                // Check if MUDInterface has the handler method or if we can call it directly
-                // The handler is: socket.on('ai_response', (data) => {...})
-                // Since we're on a different socket, we need to manually trigger the handler
-                console.log('🔔 Manually triggering MUDInterface ai_response handler');
-                
-                // Create a mock event object that matches what the handler expects
-                // The handler in mud.js expects: data.response, data.type, data.isCameraRequest, etc.
-                try {
-                    // Access the handler by checking if socket has listeners
-                    // Or manually create the message elements like the handler does
-                    const output = window.mudInterface.output || document.getElementById('output');
-                    if (output) {
-                        const aiMessage = document.createElement('div');
-                        aiMessage.className = 'message ai-message';
-                        
-                        // Determine source label (same logic as mud.js)
-                        let sourceLabel = '';
-                        if (data.isFollowUp && data.githubQuery) {
-                            sourceLabel = ' (GitHub Search Follow-up)';
-                        } else if (data.githubQuery) {
-                            sourceLabel = ' (GitHub Search)';
-                        } else if (data.isCameraRequest || (data.prompt && (data.prompt.includes('ASCII') || data.prompt.includes('camera feed') || data.prompt.includes('ASCII representation')))) {
-                            sourceLabel = ' (Camera)';
-                        }
-                        
-                        // Show prompt if available
-                        if (data.question || data.prompt) {
-                            const question = document.createElement('div');
-                            question.textContent = `Q: ${data.question || data.prompt}`;
-                            question.style.fontWeight = 'bold';
-                            question.style.marginBottom = '5px';
-                            aiMessage.appendChild(question);
-                        } else {
-                            const header = document.createElement('div');
-                            header.textContent = `${data.type ? data.type.toUpperCase() : 'AI'} Response${sourceLabel}:`;
-                            header.style.fontWeight = 'bold';
-                            header.style.marginBottom = '5px';
-                            header.style.color = '#ffc800';
-                            aiMessage.appendChild(header);
-                        }
-                        
-                        const answer = document.createElement('div');
-                        const responseText = data.response || data.answer || JSON.stringify(data);
-                        if (typeof marked !== 'undefined' && marked.parse) {
-                            answer.innerHTML = marked.parse(responseText);
-                        } else {
-                            answer.textContent = responseText;
-                        }
-                        aiMessage.appendChild(answer);
-                        
-                        // Show credits if available
-                        if (data.credits !== undefined) {
-                            const credits = document.createElement('div');
-                            credits.style.fontSize = '11px';
-                            credits.style.color = '#888';
-                            credits.style.marginTop = '5px';
-                            credits.textContent = `Credits remaining: ${data.credits}`;
-                            aiMessage.appendChild(credits);
-                        }
-                        
-                        output.appendChild(aiMessage);
-                        output.scrollTop = output.scrollHeight;
-                        console.log('✅ Added AI response to MUD chat');
-                    } else {
-                        console.error('❌ MUD output element not found');
-                    }
-                } catch (error) {
-                    console.error('❌ Error manually triggering handler:', error);
+            // Set up socket event handlers
+            setupSocketHandlers(socket);
+            
+            // Note: ai_response events are handled by MUDInterface's socket handler
+            // Since we're using the same socket, no need to duplicate here
+        }
+        
+        // Try to set up socket when MUDInterface becomes available
+        if (window.mudInterface) {
+            setupSocket();
+        } else {
+            // Wait for MUDInterface to be initialized
+            const checkMUDInterface = setInterval(() => {
+                if (window.mudInterface) {
+                    setupSocket();
+                    clearInterval(checkMUDInterface);
                 }
-            } else {
-                // Fallback: directly add to MUD output if MUDInterface not ready
-                console.warn('⚠️ MUDInterface not ready, adding directly to output');
-                const mudOutput = document.getElementById('output');
-                if (mudOutput && data.response) {
-                    const aiMessage = document.createElement('div');
-                    aiMessage.className = 'message ai-message';
-                    
-                    const header = document.createElement('div');
-                    header.textContent = `${data.type ? data.type.toUpperCase() : 'AI'} Response${data.isCameraRequest ? ' (Camera)' : ''}:`;
-                    header.style.fontWeight = 'bold';
-                    header.style.marginBottom = '5px';
-                    header.style.color = '#ffc800';
-                    aiMessage.appendChild(header);
-                    
-                    const answer = document.createElement('div');
-                    const responseText = data.response || data.answer || JSON.stringify(data);
-                    if (typeof marked !== 'undefined' && marked.parse) {
-                        answer.innerHTML = marked.parse(responseText);
-                    } else {
-                        answer.textContent = responseText;
-                    }
-                    aiMessage.appendChild(answer);
-                    
-                    if (data.credits !== undefined) {
-                        const credits = document.createElement('div');
-                        credits.style.fontSize = '11px';
-                        credits.style.color = '#888';
-                        credits.style.marginTop = '5px';
-                        credits.textContent = `Credits remaining: ${data.credits}`;
-                        aiMessage.appendChild(credits);
-                    }
-                    
-                    mudOutput.appendChild(aiMessage);
-                    mudOutput.scrollTop = mudOutput.scrollHeight;
-                    console.log('✅ Added AI response directly to MUD output');
-                }
-            }
-        });
+            }, 100);
+            
+            // Stop checking after 5 seconds
+            setTimeout(() => clearInterval(checkMUDInterface), 5000);
+        }
         
         // State
         let objectDetector = null;
@@ -764,8 +693,9 @@ Emotional Profile: Valence ${(musicAnalysis.emotionalProfile.valence * 100).toFi
 
 Please analyze this music data and provide insights about what you hear.`;
 
-                // Send to AI via MUD
-                socket.emit('command', `ai gemini ${prompt}`);
+                // Send to AI via MUD using authenticated socket
+                const authenticatedSocket = getSocket();
+                authenticatedSocket.emit('command', `ai gemini ${prompt}`);
                 addMUDMessage('Sent MIDI analysis to AI', 'system');
                 
                 document.getElementById('analyze-midi').disabled = true;
@@ -846,20 +776,33 @@ Please analyze this music data and provide insights about what you hear.`;
             const aiSelectId = mode === 'broadcast' ? 'ai-broadcast-select' : 'ai-picture-select';
             const selectedAI = document.getElementById(aiSelectId)?.value || 'gemini';
             
+            // Ensure socket is set up
+            if (!socket) {
+                setupSocket();
+            }
+            
+            // Get the authenticated socket from MUDInterface
+            const authenticatedSocket = getSocket();
+            
             console.log('📸 Sending ASCII to AI:', {
                 mode: mode,
                 aiType: selectedAI,
                 promptLength: prompt.length,
                 asciiLength: ascii.length,
                 fullPromptLength: fullPrompt.length,
-                socketConnected: socket.connected,
-                socketId: socket.id
+                socketConnected: authenticatedSocket.connected,
+                socketId: authenticatedSocket.id,
+                isMUDInterfaceSocket: authenticatedSocket === (window.mudInterface?.socket),
+                mudInterfaceAvailable: !!window.mudInterface
             });
             
             // Add metadata to help identify camera-based requests
             try {
-                socket.emit('command', `ai ${selectedAI} ${fullPrompt}`);
-                console.log(`✅ Command emitted to server (${selectedAI})`);
+                authenticatedSocket.emit('command', `ai ${selectedAI} ${fullPrompt}`);
+                console.log(`✅ Command emitted via authenticated socket (${selectedAI})`, {
+                    socketId: authenticatedSocket.id,
+                    isMUDInterface: authenticatedSocket === (window.mudInterface?.socket)
+                });
             } catch (error) {
                 console.error('❌ Error emitting command:', error);
                 updateStatus('Failed to send command: ' + error.message);
@@ -930,7 +873,7 @@ Please analyze this music data and provide insights about what you hear.`;
                 } catch (error) {
                     console.error('❌ Error adding ASCII to MUD interface:', error);
                     // Fallback to socket message
-                    socket.emit('message', {
+                    getSocket().emit('message', {
                         type: 'system',
                         content: `📸 ${mode.toUpperCase()} ASCII Image:\n\n${ascii}`,
                         isASCII: true
@@ -1225,44 +1168,47 @@ Please analyze this music data and provide insights about what you hear.`;
             document.getElementById('object-count').textContent = detectedObjects.size;
         }
 
-        // Socket.IO event handlers
-        socket.on('connect', () => {
-            updateStatus('Connected to MUD server');
-            socket.emit('initialize');
-        });
+        // Socket.IO event handlers - these will be set up in setupSocket()
+        // But we need them for the fallback socket too
+        function setupSocketHandlers(sock) {
+            sock.on('connect', () => {
+                updateStatus('Connected to MUD server');
+                if (window.mudInterface && window.mudInterface.isLoggedIn) {
+                    sock.emit('initialize');
+                }
+            });
 
-        socket.on('message', (data) => {
-            // Only show system messages in overlay, not user commands or AI responses
-            const message = data.content || data.message || JSON.stringify(data);
-            const type = data.type || 'system';
+            sock.on('message', (data) => {
+                // Only show system messages in overlay, not user commands or AI responses
+                const message = data.content || data.message || JSON.stringify(data);
+                const type = data.type || 'system';
+                
+                // Only add system/status messages to overlay, others go to MUD chat
+                if (type === 'system' && !message.includes('AI:') && !message.includes('Response')) {
+                    addMUDMessage(message, type);
+                }
+                // User commands and AI responses are handled by MUD chat interface
+            });
             
-            // Only add system/status messages to overlay, others go to MUD chat
-            if (type === 'system' && !message.includes('AI:') && !message.includes('Response')) {
-                addMUDMessage(message, type);
-            }
-            // User commands and AI responses are handled by MUD chat interface
-        });
+            sock.on('github_response', (data) => {
+                if (data.data && data.data.items) {
+                    addMUDMessage(`Found ${data.data.items.length} repositories`, 'system');
+                }
+            });
+            
+            sock.on('wifi:networks', (data) => {
+                updateWiFiNetworks(data.networks);
+            });
 
-        socket.on('ai_response', (data) => {
-            // Don't add to overlay - let MUD chat handle it
-            // The MUD chat interface will receive this event via its own socket listener
-            // and display it in the scrollable terminal section below
-        });
-
-        socket.on('github_response', (data) => {
-            if (data.data && data.data.items) {
-                addMUDMessage(`Found ${data.data.items.length} repositories`, 'system');
-            }
-        });
-
-        socket.on('wifi:networks', (data) => {
-            updateWiFiNetworks(data.networks);
-        });
-
-        socket.on('error', (data) => {
-            const message = typeof data === 'string' ? data : (data.message || JSON.stringify(data));
-            addMUDMessage(message, 'error');
-        });
+            sock.on('error', (data) => {
+                const message = typeof data === 'string' ? data : (data.message || JSON.stringify(data));
+                addMUDMessage(message, 'error');
+            });
+        }
+        
+        // Initialize with a temporary socket (will be replaced when MUDInterface is ready)
+        socket = getSocket();
+        setupSocketHandlers(socket);
 
         // Add MUD message to overlay
         function addMUDMessage(message, type = 'system') {
@@ -1414,7 +1360,7 @@ Please analyze this music data and provide insights about what you hear.`;
         animate();
         
         // Connect to MUD WiFi scanning
-        socket.emit('wifi:start-scanning', { interval: 5 });
+        getSocket().emit('wifi:start-scanning', { interval: 5 });
         
         // Initialize MUD interface in scrollable section
         // Wait for mud.js to be fully loaded
@@ -1428,19 +1374,24 @@ Please analyze this music data and provide insights about what you hear.`;
             
             if (typeof MUDInterface !== 'undefined') {
                 try {
-                    window.mudInterface = new MUDInterface();
+                    // Use singleton pattern - reuse existing instance if available
+                    if (window.mudInterface) {
+                        console.log('✅ Reusing existing MUDInterface instance');
+                    } else {
+                        window.mudInterface = MUDInterface.getInstance();
+                    }
                     console.log('✅ MUD Interface initialized:', {
                         mudInterface: window.mudInterface,
                         hasAddMessage: typeof window.mudInterface.addMessage === 'function',
                         outputElement: document.getElementById('output'),
                         socketId: window.mudInterface.socket?.id,
-                        socketConnected: window.mudInterface.socket?.connected
+                        socketConnected: window.mudInterface.socket?.connected,
+                        isLoggedIn: window.mudInterface.isLoggedIn,
+                        username: window.mudInterface.username
                     });
                     
-                    // Verify socket is listening
-                    window.mudInterface.socket.on('ai_response', (data) => {
-                        console.log('🔔 MUDInterface socket received ai_response event:', !!data);
-                    });
+                    // Note: ai_response events are handled by MUDInterface's socket handler
+                    // No need to add duplicate listener here
                 } catch (error) {
                     console.error('❌ Error initializing MUD Interface:', error);
                     console.error('Error stack:', error.stack);

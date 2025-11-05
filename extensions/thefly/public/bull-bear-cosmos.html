@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bull-Bear Cosmic Topology & Safe Superposition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #f50;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 400px;
+            z-index: 1000;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #0f0;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 400px;
+            z-index: 1000;
+            font-size: 12px;
+        }
+
+        button {
+            background: #000;
+            color: #f50;
+            border: 1px solid #f50;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #f50;
+            color: #000;
+        }
+
+        button.active {
+            background: #f50;
+            color: #000;
+        }
+
+        select {
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin: 5px 0;
+            width: 100%;
+            font-family: 'Courier New', monospace;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        h2 {
+            color: #0ff;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        h3 {
+            color: #ff0;
+            margin: 10px 0 5px 0;
+            font-size: 14px;
+        }
+
+        .metric {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .metric-label {
+            color: #0f0;
+        }
+
+        .metric-value {
+            color: #0ff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        
+        <div id="controls">
+            <h2>🐻🐂 Bull-Bear Cosmos</h2>
+            
+            <h3>Simulation Controls</h3>
+            <button id="startBtn">Start Simulation</button>
+            <button id="stopBtn">Stop Simulation</button>
+            
+            <h3>Bullfight Mode</h3>
+            <select id="modeSelect">
+                <option value="bullfighting">Bullfighting (Death/Transformation)</option>
+                <option value="bullriding">Bull Riding (No Death, Clowns & Recovery)</option>
+            </select>
+            
+            <h3>Scale</h3>
+            <select id="scaleSelect">
+                <option value="universe">Universe</option>
+                <option value="galaxy">Galaxy</option>
+                <option value="solar">Solar System</option>
+                <option value="planet">Planet</option>
+                <option value="city">City</option>
+                <option value="building">Building</option>
+                <option value="apartment">Apartment</option>
+            </select>
+            
+            <h3>Observer Controls</h3>
+            <button id="addObserverBtn">Add Observer</button>
+            <button id="boostMatadorBtn">Boost Matador</button>
+            <button id="boostBullBtn">Boost Bull</button>
+            
+            <h3>Navigation</h3>
+            <button id="navigateLeft">Turn Left</button>
+            <button id="navigateRight">Turn Right</button>
+            <button id="navigateUp">Go Up</button>
+            <button id="navigateDown">Go Down</button>
+        </div>
+
+        <div id="info">
+            <h2>📊 State Information</h2>
+            
+            <h3>Earth Trajectory</h3>
+            <div class="metric">
+                <span class="metric-label">Position X:</span>
+                <span class="metric-value" id="earthX">0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Position Y:</span>
+                <span class="metric-value" id="earthY">0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Position Z:</span>
+                <span class="metric-value" id="earthZ">0</span>
+            </div>
+            
+            <h3>Observer Eyes</h3>
+            <div class="metric">
+                <span class="metric-label">Count:</span>
+                <span class="metric-value" id="observerCount">0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Bloodshot:</span>
+                <span class="metric-value" id="bloodshotCount">0</span>
+            </div>
+            
+            <h3>Safe Zones</h3>
+            <div class="metric">
+                <span class="metric-label">Found:</span>
+                <span class="metric-value" id="safeZoneCount">0</span>
+            </div>
+            
+            <h3>Slip Streams</h3>
+            <div class="metric">
+                <span class="metric-label">Active:</span>
+                <span class="metric-value" id="slipStreamCount">0</span>
+            </div>
+            
+            <h3>Gravitational Lensing</h3>
+            <div class="metric">
+                <span class="metric-label">Effects:</span>
+                <span class="metric-value" id="lensingCount">0</span>
+            </div>
+
+            <h3>Bullfight Dynamics</h3>
+            <div class="metric">
+                <span class="metric-label">Catharsis:</span>
+                <span class="metric-value" id="catharsis">0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Bull Energy:</span>
+                <span class="metric-value" id="bullEnergy">0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Matador Control:</span>
+                <span class="metric-value" id="matadorControl">0</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // State
+        let bullBearState = null;
+        let bullfightState = null;
+        let currentScale = 'solar';
+        
+        // Scale multipliers
+        const scaleMultipliers = {
+            universe: 1e-12,
+            galaxy: 1e-9,
+            solar: 1e-6,
+            planet: 1e-3,
+            city: 1,
+            building: 100,
+            apartment: 1000
+        };
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            draw();
+        }
+        
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const scale = scaleMultipliers[currentScale] || 1e-6;
+            
+            // Draw Spain shape (bear eating bull)
+            if (bullBearState && bullBearState.spainGeometry) {
+                drawSpain(bullBearState.spainGeometry, centerX, centerY, scale);
+            }
+            
+            // Draw Earth trajectory
+            if (bullBearState && bullBearState.earthTrajectory) {
+                drawEarth(bullBearState.earthTrajectory, centerX, centerY, scale);
+            }
+            
+            // Draw safe zones
+            if (bullBearState && bullBearState.safeZones) {
+                drawSafeZones(bullBearState.safeZones, centerX, centerY, scale);
+            }
+            
+            // Draw slip streams
+            if (bullBearState && bullBearState.slipStreams) {
+                drawSlipStreams(bullBearState.slipStreams, centerX, centerY, scale);
+            }
+            
+            // Draw gravitational lensing
+            if (bullBearState && bullBearState.gravitationalLensing) {
+                drawLensing(bullBearState.gravitationalLensing, centerX, centerY, scale);
+            }
+            
+            // Draw observers
+            if (bullBearState && bullBearState.observerEyes) {
+                drawObservers(bullBearState.observerEyes, centerX, centerY, scale);
+            }
+            
+            // Draw bullfight arena
+            if (bullfightState) {
+                drawArena(bullfightState, centerX, centerY);
+            }
+        }
+        
+        function drawSpain(geometry, centerX, centerY, scale) {
+            ctx.strokeStyle = '#f50';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            
+            if (geometry.coordinates && geometry.coordinates.length > 0) {
+                const first = geometry.coordinates[0];
+                const x = centerX + first.x * scale;
+                const y = centerY + first.y * scale;
+                ctx.moveTo(x, y);
+                
+                for (let i = 1; i < geometry.coordinates.length; i++) {
+                    const coord = geometry.coordinates[i];
+                    const x = centerX + coord.x * scale;
+                    const y = centerY + coord.y * scale;
+                    ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+        }
+        
+        function drawEarth(trajectory, centerX, centerY, scale) {
+            const pos = trajectory.currentPosition;
+            const x = centerX + pos.x * scale;
+            const y = centerY + pos.y * scale;
+            
+            // Draw Earth as a blue circle
+            ctx.fillStyle = '#0af';
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw trajectory path
+            ctx.strokeStyle = '#0af';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, trajectory.radius * scale, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Label
+            ctx.fillStyle = '#0af';
+            ctx.font = '12px Courier New';
+            ctx.fillText('Earth', x + 10, y - 10);
+        }
+        
+        function drawSafeZones(zones, centerX, centerY, scale) {
+            for (const zone of zones) {
+                const pos = zone.position;
+                const x = centerX + pos.x * scale;
+                const y = centerY + pos.y * scale;
+                
+                // Color by stability
+                const r = 255;
+                const g = Math.floor(255 * zone.stabilityScore);
+                const b = 0;
+                ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+                
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(x, y, zone.stabilityScore * 30, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Label
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.font = '10px Courier New';
+                ctx.fillText(`Earth ${zone.earthIndex}`, x - 20, y + 35);
+            }
+        }
+        
+        function drawSlipStreams(streams, centerX, centerY, scale) {
+            for (const stream of streams) {
+                if (!stream.path || stream.path.length < 2) continue;
+                
+                // Color by type
+                ctx.strokeStyle = stream.type === 'chute' ? '#f0f' : '#f80';
+                ctx.lineWidth = stream.strength || 2;
+                
+                ctx.beginPath();
+                const first = stream.path[0];
+                const x = centerX + first.x * scale;
+                const y = centerY + first.y * scale;
+                ctx.moveTo(x, y);
+                
+                for (let i = 1; i < stream.path.length; i++) {
+                    const point = stream.path[i];
+                    const x = centerX + point.x * scale;
+                    const y = centerY + point.y * scale;
+                    ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+        }
+        
+        function drawLensing(lensingArray, centerX, centerY, scale) {
+            for (const lens of lensingArray) {
+                const pos = lens.sourcePosition;
+                const x = centerX + pos.x * scale;
+                const y = centerY + pos.y * scale;
+                
+                // Draw lensing effect as concentric rings
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 1;
+                const strength = lens.lensingStrength * 50;
+                
+                for (let i = 1; i <= 3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, strength * i, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        function drawObservers(observers, centerX, centerY, scale) {
+            for (const observer of observers) {
+                const pos = observer.position;
+                const x = centerX + pos.x * scale;
+                const y = centerY + pos.y * scale;
+                
+                // Color by bloodshot
+                ctx.fillStyle = observer.isBloodshot ? '#f00' : '#f50';
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw attention line
+                if (observer.attentionFocus) {
+                    ctx.strokeStyle = observer.isBloodshot ? '#f00' : '#f50';
+                    ctx.lineWidth = observer.observationPower * 10;
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    const fx = centerX + observer.attentionFocus.x * scale;
+                    const fy = centerY + observer.attentionFocus.y * scale;
+                    ctx.lineTo(fx, fy);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        function drawArena(state, centerX, centerY) {
+            // Draw arena
+            ctx.strokeStyle = '#ff0';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, state.arena.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Draw matador
+            if (state.matador) {
+                const x = centerX + state.matador.position.x;
+                const y = centerY + state.matador.position.y;
+                ctx.fillStyle = '#f0f';
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw bull
+            if (state.bull) {
+                const x = centerX + state.bull.position.x;
+                const y = centerY + state.bull.position.y;
+                ctx.fillStyle = '#a00';
+                ctx.beginPath();
+                ctx.arc(x, y, 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw spectators
+            if (state.spectators) {
+                for (const spectator of state.spectators) {
+                    const x = centerX + spectator.position.x;
+                    const y = centerY + spectator.position.y;
+                    ctx.fillStyle = spectator.emotionalState === 'excited' ? '#ff0' : '#0f0';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            // Draw clowns (bull riding mode)
+            if (state.clowns) {
+                for (const clown of state.clowns) {
+                    if (!clown.active) continue;
+                    const x = centerX + clown.position.x;
+                    const y = centerY + clown.position.y;
+                    ctx.strokeStyle = '#0f0';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(x, y, clown.bufferStrength * 20, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        function updateInfo() {
+            if (bullBearState) {
+                if (bullBearState.earthTrajectory) {
+                    const pos = bullBearState.earthTrajectory.currentPosition;
+                    document.getElementById('earthX').textContent = pos.x.toFixed(2);
+                    document.getElementById('earthY').textContent = pos.y.toFixed(2);
+                    document.getElementById('earthZ').textContent = pos.z.toFixed(2);
+                }
+                
+                if (bullBearState.observerEyes) {
+                    document.getElementById('observerCount').textContent = bullBearState.observerEyes.length;
+                    const bloodshot = bullBearState.observerEyes.filter(o => o.isBloodshot).length;
+                    document.getElementById('bloodshotCount').textContent = bloodshot;
+                }
+                
+                if (bullBearState.safeZones) {
+                    document.getElementById('safeZoneCount').textContent = bullBearState.safeZones.length;
+                }
+                
+                if (bullBearState.slipStreams) {
+                    document.getElementById('slipStreamCount').textContent = bullBearState.slipStreams.length;
+                }
+                
+                if (bullBearState.gravitationalLensing) {
+                    document.getElementById('lensingCount').textContent = bullBearState.gravitationalLensing.length;
+                }
+            }
+            
+            if (bullfightState) {
+                document.getElementById('catharsis').textContent = (bullfightState.catharsisLevel * 100).toFixed(0) + '%';
+                if (bullfightState.bull && bullfightState.bull.energy) {
+                    document.getElementById('bullEnergy').textContent = (bullfightState.bull.energy.totalEnergy * 100).toFixed(0) + '%';
+                }
+                if (bullfightState.matador) {
+                    document.getElementById('matadorControl').textContent = (bullfightState.matador.control * 100).toFixed(0) + '%';
+                }
+            }
+        }
+        
+        // Socket handlers
+        socket.on('bullBearUpdate', (state) => {
+            bullBearState = state;
+            updateInfo();
+        });
+        
+        socket.on('bullfightUpdate', (state) => {
+            bullfightState = state;
+            updateInfo();
+        });
+        
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+        
+        // UI event handlers
+        document.getElementById('startBtn').addEventListener('click', () => {
+            socket.emit('startBullBearSimulation');
+            socket.emit('startBullfight');
+        });
+        
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            socket.emit('stopBullBearSimulation');
+            socket.emit('stopBullfight');
+        });
+        
+        document.getElementById('modeSelect').addEventListener('change', (e) => {
+            const mode = e.target.value;
+            socket.emit('setBullBearMode', { mode });
+            socket.emit('setBullfightMode', { mode });
+        });
+        
+        document.getElementById('scaleSelect').addEventListener('change', (e) => {
+            currentScale = e.target.value;
+        });
+        
+        document.getElementById('addObserverBtn').addEventListener('click', () => {
+            const id = `observer_${Date.now()}`;
+            const position = {
+                x: Math.random() * 1000 - 500,
+                y: Math.random() * 1000 - 500,
+                z: 0
+            };
+            socket.emit('addObserver', { id, position, consciousness: 0.7, isBloodshot: Math.random() > 0.7 });
+            socket.emit('addSpectator', { id, position, consciousness: 0.7 });
+        });
+        
+        document.getElementById('boostMatadorBtn').addEventListener('click', () => {
+            socket.emit('boostMatador', { amount: 0.1 });
+        });
+        
+        document.getElementById('boostBullBtn').addEventListener('click', () => {
+            socket.emit('boostBull', { amount: 0.1 });
+        });
+        
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
+
+
+

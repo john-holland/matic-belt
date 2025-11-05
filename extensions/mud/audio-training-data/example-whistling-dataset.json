@@ -1,0 +1,104 @@
+{
+  "version": "1.0.0",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "description": "Example audio training dataset for whistling sounds with various moods and modes",
+  "sampleRate": 44100,
+  "samples": [
+    {
+      "id": "sample_1704067200000_abc123",
+      "filePath": "sample_1704067200000_abc123.webm",
+      "mood": "happy",
+      "mode": "whistling",
+      "duration": 3.45,
+      "sampleRate": 44100,
+      "timestamp": 1704067200000,
+      "metadata": {
+        "volume": 0.65,
+        "pitch": 523.25,
+        "tempo": 120.0
+      }
+    },
+    {
+      "id": "sample_1704067201000_def456",
+      "filePath": "sample_1704067201000_def456.webm",
+      "mood": "sad",
+      "mode": "whistling",
+      "duration": 4.12,
+      "sampleRate": 44100,
+      "timestamp": 1704067201000,
+      "metadata": {
+        "volume": 0.45,
+        "pitch": 392.0,
+        "tempo": 80.0
+      }
+    },
+    {
+      "id": "sample_1704067202000_ghi789",
+      "filePath": "sample_1704067202000_ghi789.webm",
+      "mood": "energetic",
+      "mode": "whistling",
+      "duration": 2.89,
+      "sampleRate": 44100,
+      "timestamp": 1704067202000,
+      "metadata": {
+        "volume": 0.85,
+        "pitch": 659.25,
+        "tempo": 140.0
+      }
+    },
+    {
+      "id": "sample_1704067203000_jkl012",
+      "filePath": "sample_1704067203000_jkl012.webm",
+      "mood": "calm",
+      "mode": "whistling",
+      "duration": 5.23,
+      "sampleRate": 44100,
+      "timestamp": 1704067203000,
+      "metadata": {
+        "volume": 0.35,
+        "pitch": 440.0,
+        "tempo": 90.0
+      }
+    },
+    {
+      "id": "sample_1704067204000_mno345",
+      "filePath": "sample_1704067204000_mno345.webm",
+      "mood": "playful",
+      "mode": "whistling",
+      "duration": 3.78,
+      "sampleRate": 44100,
+      "timestamp": 1704067204000,
+      "metadata": {
+        "volume": 0.70,
+        "pitch": 587.33,
+        "tempo": 110.0
+      }
+    }
+  ],
+  "moods": [
+    "happy",
+    "sad",
+    "energetic",
+    "calm",
+    "playful"
+  ],
+  "modes": [
+    "whistling"
+  ],
+  "statistics": {
+    "totalSamples": 5,
+    "samplesPerMood": {
+      "happy": 1,
+      "sad": 1,
+      "energetic": 1,
+      "calm": 1,
+      "playful": 1
+    },
+    "samplesPerMode": {
+      "whistling": 5
+    },
+    "averageDuration": 3.894,
+    "totalDuration": 19.47
+  }
+}
+

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>MUD server needs location access to scan WiFi networks for visualization and triangulation.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>MUD server needs location access to scan WiFi networks for visualization and triangulation.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>MUD server needs location access to scan WiFi networks for visualization and triangulation.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_http._tcp</string>
+    </array>
+    <key>LSUIElement</key>
+    <false/>
+</dict>
+</plist>
+

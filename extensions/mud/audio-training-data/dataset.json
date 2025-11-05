@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "description": "Audio training dataset for mood and mode recognition",
+  "sampleRate": 44100,
+  "samples": [],
+  "moods": [],
+  "modes": [],
+  "statistics": {
+    "totalSamples": 0,
+    "samplesPerMood": {},
+    "samplesPerMode": {},
+    "averageDuration": 0,
+    "totalDuration": 0
+  }
+}
+

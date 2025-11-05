@@ -12,6 +12,8 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import GalaxyTopologySimulator from './galaxy-topology';
 import AudioSwizzleVisualizer from './audio-swizzle-visualizer';
+import BullBearTopologySimulator from './bull-bear-topology';
+import BullfightMetaphorEngine from './bullfight-metaphor';
 
 export class IntegratedDemoServer extends EventEmitter {
     private app!: express.Application;
@@ -20,6 +22,8 @@ export class IntegratedDemoServer extends EventEmitter {
     
     private galaxySimulator: GalaxyTopologySimulator;
     private audioVisualizer: AudioSwizzleVisualizer;
+    private bullBearSimulator: BullBearTopologySimulator;
+    private bullfightEngine: BullfightMetaphorEngine;
 
     constructor() {
         super();
@@ -27,9 +31,12 @@ export class IntegratedDemoServer extends EventEmitter {
         
         this.galaxySimulator = new GalaxyTopologySimulator();
         this.audioVisualizer = new AudioSwizzleVisualizer();
+        this.bullBearSimulator = new BullBearTopologySimulator();
+        this.bullfightEngine = new BullfightMetaphorEngine('bullfighting');
         
         this.setupGalaxyListeners();
         this.setupAudioListeners();
+        this.setupBullBearListeners();
         this.setupCrossSystemIntegration();
     }
 
@@ -63,6 +70,10 @@ export class IntegratedDemoServer extends EventEmitter {
             res.sendFile(path.join(__dirname, '../public/integrated.html'));
         });
 
+        this.app.get('/bull-bear-cosmos', (req, res) => {
+            res.sendFile(path.join(__dirname, '../public/bull-bear-cosmos.html'));
+        });
+
         // API endpoints
         this.app.get('/api/galaxy/state', (req, res) => {
             res.json(this.galaxySimulator.getState());
@@ -70,6 +81,14 @@ export class IntegratedDemoServer extends EventEmitter {
 
         this.app.get('/api/audio/frame', (req, res) => {
             res.json(this.audioVisualizer.getCurrentFrame());
+        });
+
+        this.app.get('/api/bullbear/state', (req, res) => {
+            res.json(this.bullBearSimulator.getState());
+        });
+
+        this.app.get('/api/bullfight/state', (req, res) => {
+            res.json(this.bullfightEngine.getState());
         });
 
         this.setupWebSocketHandlers();
@@ -120,6 +139,52 @@ export class IntegratedDemoServer extends EventEmitter {
                 this.audioVisualizer.registerSource(data.id, data.name, data.color);
             });
 
+            // Bull-Bear simulation controls
+            socket.on('startBullBearSimulation', () => {
+                this.bullBearSimulator.start();
+            });
+
+            socket.on('stopBullBearSimulation', () => {
+                this.bullBearSimulator.stop();
+            });
+
+            socket.on('addObserver', (data: { id: string; position: any; consciousness: number; isBloodshot: boolean }) => {
+                this.bullBearSimulator.addObserver(data.id, data.position, data.consciousness, data.isBloodshot);
+            });
+
+            socket.on('updateObserverFocus', (data: { id: string; focus: any }) => {
+                this.bullBearSimulator.updateObserverFocus(data.id, data.focus);
+            });
+
+            socket.on('setBullBearMode', (data: { mode: 'bullfighting' | 'bullriding' }) => {
+                this.bullBearSimulator.setMode(data.mode);
+            });
+
+            // Bullfight metaphor controls
+            socket.on('startBullfight', () => {
+                this.bullfightEngine.start();
+            });
+
+            socket.on('stopBullfight', () => {
+                this.bullfightEngine.stop();
+            });
+
+            socket.on('boostMatador', (data: { amount: number }) => {
+                this.bullfightEngine.boostMatador(data.amount);
+            });
+
+            socket.on('boostBull', (data: { amount: number }) => {
+                this.bullfightEngine.boostBull(data.amount);
+            });
+
+            socket.on('addSpectator', (data: { id: string; position: any; consciousness: number }) => {
+                this.bullfightEngine.addSpectator(data.id, data.position, data.consciousness);
+            });
+
+            socket.on('setBullfightMode', (data: { mode: 'bullfighting' | 'bullriding' }) => {
+                this.bullfightEngine.setMode(data.mode);
+            });
+
             socket.on('disconnect', () => {
                 console.log('🔌 Client disconnected');
             });
@@ -148,6 +213,36 @@ export class IntegratedDemoServer extends EventEmitter {
 
         this.audioVisualizer.on('sourceRegistered', (source) => {
             this.io.emit('audioSourceRegistered', source);
+        });
+    }
+
+    private setupBullBearListeners(): void {
+        this.bullBearSimulator.on('update', (state) => {
+            this.io.emit('bullBearUpdate', state);
+        });
+
+        this.bullBearSimulator.on('observerAdded', (data) => {
+            this.io.emit('observerAdded', data);
+        });
+
+        this.bullBearSimulator.on('observerRemoved', (data) => {
+            this.io.emit('observerRemoved', data);
+        });
+
+        this.bullfightEngine.on('update', (state) => {
+            this.io.emit('bullfightUpdate', state);
+        });
+
+        this.bullfightEngine.on('event', (event) => {
+            this.io.emit('bullfightEvent', event);
+        });
+
+        this.bullfightEngine.on('fallStarted', (data) => {
+            this.io.emit('humanFall', data);
+        });
+
+        this.bullfightEngine.on('observerRescued', (data) => {
+            this.io.emit('observerRescued', data);
         });
     }
 
@@ -232,11 +327,14 @@ export class IntegratedDemoServer extends EventEmitter {
             console.log(`  🌌 Galaxy Topology:      http://localhost:${port}/galaxy`);
             console.log(`  🎨 Audio Swizzle:        http://localhost:${port}/audio-swizzle`);
             console.log(`  🔮 Integrated View:      http://localhost:${port}/integrated`);
+            console.log(`  🐻🐂 Bull-Bear Cosmos:    http://localhost:${port}/bull-bear-cosmos`);
             console.log('');
             console.log('Features:');
             console.log('  ✨ Galaxy consciousness simulation with parallax reflective topology');
             console.log('  🎵 Multi-dimensional audio-to-visual mapping for accessibility');
             console.log('  🌀 Bidirectional influence between sound and cosmic consciousness');
+            console.log('  🐻🐂 Bull-Bear cosmic topology with gravitational lensing and slip streams');
+            console.log('  🎭 Bullfight/Bull riding metaphor engine');
             console.log('');
         });
     }

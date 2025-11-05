@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MUD WiFi Scanner - Visual Triangulation</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        #video-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 320px;
+            height: 240px;
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            z-index: 10;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #00ff00;
+            min-width: 300px;
+            z-index: 10;
+        }
+
+        #status {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(0, 255, 0, 0.1);
+            border-radius: 4px;
+            border: 1px solid #00ff00;
+        }
+
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #00cc00;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        #networks-list {
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .network-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: rgba(0, 255, 0, 0.05);
+            border-left: 3px solid #00ff00;
+            border-radius: 4px;
+        }
+
+        .network-item strong {
+            color: #00ff00;
+        }
+
+        .signal-bar {
+            display: inline-block;
+            width: 60px;
+            height: 10px;
+            background: #333;
+            margin-left: 10px;
+            position: relative;
+        }
+
+        .signal-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+        }
+
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #00ff00;
+            max-width: 400px;
+            z-index: 10;
+        }
+
+        .error {
+            color: #ff0000;
+            background: rgba(255, 0, 0, 0.1);
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .polling-controls {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #00ff00;
+        }
+
+        .polling-controls label {
+            display: block;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .polling-controls input[type="number"] {
+            width: 80px;
+            padding: 5px;
+            background: #000;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+
+        .polling-status {
+            font-size: 11px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .polling-status.active {
+            color: #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container"></div>
+        
+        <div id="video-container">
+            <video id="video" autoplay playsinline muted></video>
+        </div>
+
+        <div id="controls">
+            <div id="status">
+                <div><strong>Status:</strong> <span id="status-text">Initializing...</span></div>
+                <div><strong>Networks:</strong> <span id="network-count">0</span></div>
+            </div>
+            
+            <button id="start-btn">Start Scanning</button>
+            <button id="stop-btn" disabled>Stop Scanning</button>
+            <button id="camera-btn">Enable Camera</button>
+            
+            <div class="polling-controls">
+                <label>
+                    <input type="checkbox" id="auto-poll" checked>
+                    Auto-poll on start
+                </label>
+                <label>
+                    Polling interval (seconds):
+                    <input type="number" id="poll-interval" value="5" min="1" max="60">
+                </label>
+                <div id="poll-status" class="polling-status"></div>
+            </div>
+            
+            <div id="networks-list"></div>
+        </div>
+
+        <div id="info">
+            <h3>WiFi Triangulation Scanner</h3>
+            <p>This visualizer uses:</p>
+            <ul>
+                <li>Camera position/orientation</li>
+                <li>Signal strength (RSSI)</li>
+                <li>Triangulation algorithm</li>
+            </ul>
+            <p><strong>Note:</strong> On macOS, WiFi scanning may require sudo permissions or location services.</p>
+            <p><strong>Movement Tracking:</strong> Move your device to navigate the 3D space. Camera tracks device orientation and acceleration.</p>
+            <p><strong>Surface Features:</strong> Camera analyzes frames to detect surface features (hallucination technique from K29).</p>
+        </div>
+    </div>
+
+    <script>
+        // Three.js setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // WiFi network objects
+        const wifiNetworks = new Map();
+        const videoElement = document.getElementById('video');
+        let videoStream = null;
+        let socket = null;
+        let httpPollInterval = null;
+        let isPolling = false;
+        
+        // Device motion and camera tracking - declare BEFORE use
+        let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 }; // Z, X, Y rotation
+        let deviceAcceleration = { x: 0, y: 0, z: 0 };
+        let deviceRotationRate = { alpha: 0, beta: 0, gamma: 0 };
+        let cameraPosition = new THREE.Vector3(0, 1.6, 3);
+        let cameraRotation = new THREE.Euler(0, 0, 0);
+        let targetCameraPosition = new THREE.Vector3(0, 1.6, 3);
+        let targetCameraRotation = new THREE.Euler(0, 0, 0);
+        
+        // Camera frame analysis for surface feature detection (hallucination)
+        let lastFrame = null;
+        let frameCanvas = null;
+        let frameContext = null;
+        let surfaceFeatures = [];
+        let movementHistory = [];
+        
+        // Smooth interpolation settings (from K29)
+        const followSpeed = 5.0;
+        const rotationSpeed = 2.0;
+        
+        // Zoom state for Shift key
+        let isZoomedOut = false;
+        let originalCameraPosition = new THREE.Vector3(0, 1.6, 3);
+        
+        // Calculate zoomed out position dynamically based on WiFi network sphere size
+        function calculateZoomedOutPosition() {
+            // Find the maximum distance of any WiFi network from center
+            let maxDistance = 15; // Default max distance
+            wifiNetworks.forEach((mesh, ssid) => {
+                const networkData = mesh.userData.network;
+                if (networkData) {
+                    const rssi = networkData.signal_level || -70;
+                    const n = 2.5;
+                    const A = -30;
+                    const distance = Math.pow(10, (A - rssi) / (10 * n));
+                    maxDistance = Math.max(maxDistance, Math.min(20, distance));
+                }
+            });
+            
+            // Position camera far enough back to see the entire sphere
+            // Add some padding (1.5x the radius) and position higher for better view
+            const zoomDistance = maxDistance * 1.5 + 5;
+            return new THREE.Vector3(0, maxDistance * 0.8 + 3, zoomDistance);
+        }
+
+        // Camera position (user's position in 3D space) - after variables declared
+        camera.position.copy(cameraPosition);
+        camera.lookAt(0, 0, 0);
+        
+        // Initialize frame analysis canvas
+        frameCanvas = document.createElement('canvas');
+        frameCanvas.width = 320;
+        frameCanvas.height = 240;
+        frameContext = frameCanvas.getContext('2d');
+
+        // Add grid (static in world space)
+        const gridHelper = new THREE.GridHelper(20, 20, 0x00ff00, 0x003300);
+        scene.add(gridHelper);
+
+        // Add axes that will move with camera
+        const axesHelper = new THREE.AxesHelper(2);
+        // Make axes a child of camera so they move with it
+        camera.add(axesHelper);
+
+        // Socket connection
+        function connectSocket() {
+            socket = io();
+            
+            socket.on('connect', () => {
+                updateStatus('Connected to MUD server');
+            });
+
+            socket.on('wifi:networks', (data) => {
+                updateNetworks(data.networks);
+                visualizeNetworks(data.networks);
+            });
+
+            socket.on('wifi:error', (error) => {
+                showError(error.message + (error.hint ? ' - ' + error.hint : ''));
+            });
+
+            socket.on('wifi:scanning-started', () => {
+                updateStatus('Scanning WiFi networks...');
+                document.getElementById('start-btn').disabled = true;
+                document.getElementById('stop-btn').disabled = false;
+            });
+
+            socket.on('wifi:scanning-stopped', () => {
+                updateStatus('Scanning stopped');
+                document.getElementById('start-btn').disabled = false;
+                document.getElementById('stop-btn').disabled = true;
+                stopHttpPolling();
+            });
+
+            socket.on('disconnect', () => {
+                updateStatus('Disconnected from server - using HTTP polling fallback');
+                // Fallback to HTTP polling if socket disconnects
+                if (isPolling) {
+                    startHttpPolling();
+                }
+            });
+        }
+
+        // HTTP Polling functions
+        async function pollWiFiNetworks() {
+            try {
+                const response = await fetch('/api/wifi/scan');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                updateNetworks(data.networks);
+                visualizeNetworks(data.networks);
+                updatePollStatus(true);
+            } catch (error) {
+                console.error('HTTP polling error:', error);
+                showError('HTTP polling failed: ' + error.message);
+                updatePollStatus(false);
+            }
+        }
+
+        function startHttpPolling() {
+            if (httpPollInterval) {
+                clearInterval(httpPollInterval);
+            }
+            
+            const interval = parseInt(document.getElementById('poll-interval').value) * 1000;
+            
+            // Immediate poll
+            pollWiFiNetworks();
+            
+            // Then poll at intervals
+            httpPollInterval = setInterval(pollWiFiNetworks, interval);
+            isPolling = true;
+            updatePollStatus(true);
+        }
+
+        function stopHttpPolling() {
+            if (httpPollInterval) {
+                clearInterval(httpPollInterval);
+                httpPollInterval = null;
+            }
+            isPolling = false;
+            updatePollStatus(false);
+        }
+
+        function updatePollStatus(active) {
+            const statusEl = document.getElementById('poll-status');
+            if (active && httpPollInterval) {
+                const interval = parseInt(document.getElementById('poll-interval').value);
+                statusEl.textContent = `Polling every ${interval}s`;
+                statusEl.classList.add('active');
+            } else {
+                statusEl.textContent = 'Polling stopped';
+                statusEl.classList.remove('active');
+            }
+        }
+
+        // Update status
+        function updateStatus(text) {
+            document.getElementById('status-text').textContent = text;
+        }
+
+        // Show error
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            document.getElementById('controls').appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 5000);
+        }
+
+        // Update network list
+        function updateNetworks(networks) {
+            document.getElementById('network-count').textContent = networks.length;
+            const list = document.getElementById('networks-list');
+            list.innerHTML = '';
+
+            networks.sort((a, b) => (b.signal_level || -100) - (a.signal_level || -100));
+
+            networks.forEach(network => {
+                const item = document.createElement('div');
+                item.className = 'network-item';
+                
+                const signalLevel = network.signal_level || -100;
+                const signalPercent = Math.max(0, Math.min(100, (signalLevel + 100) / 0.5));
+                
+                item.innerHTML = `
+                    <strong>${network.ssid || 'Unknown'}</strong><br>
+                    Signal: ${signalLevel} dBm
+                    <div class="signal-bar">
+                        <div class="signal-bar-fill" style="width: ${signalPercent}%"></div>
+                    </div><br>
+                    Channel: ${network.channel || 'N/A'} | Security: ${network.security || 'Open'}
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // Calculate WiFi position in a sphere around camera
+        function calculateWiFiPosition(signal, cameraPos, cameraDir) {
+            // Signal strength to distance estimation
+            // RSSI = -10 * n * log10(d) + A
+            // where n is path loss exponent (typically 2-4), A is reference power
+            const n = 2.5; // Path loss exponent
+            const A = -30; // Reference power at 1m (dBm)
+            const rssi = signal.signal_level || -70;
+            
+            // Calculate estimated distance (radius of sphere)
+            const distance = Math.pow(10, (A - rssi) / (10 * n));
+            
+            // Clamp distance to reasonable range (1-15 meters)
+            const radius = Math.max(1, Math.min(15, distance));
+            
+            // Use network properties to generate unique spherical coordinates
+            // Use SSID hash for consistent positioning
+            const ssid = signal.ssid || 'unknown';
+            let hash = 0;
+            for (let i = 0; i < ssid.length; i++) {
+                hash = ((hash << 5) - hash) + ssid.charCodeAt(i);
+                hash = hash & hash; // Convert to 32-bit integer
+            }
+            
+            // Use hash to generate spherical angles
+            const theta = (Math.abs(hash) % 360) * (Math.PI / 180); // Azimuth angle (0-2π)
+            const phi = ((Math.abs(hash >> 8) % 180) - 90) * (Math.PI / 180); // Elevation angle (-π/2 to π/2)
+            
+            // Add some variation based on channel for better distribution
+            const channelOffset = ((signal.channel || 1) / 13.0) * Math.PI * 2;
+            const adjustedTheta = theta + channelOffset * 0.1;
+            
+            // Convert spherical coordinates to Cartesian (relative to camera position)
+            const x = radius * Math.cos(phi) * Math.cos(adjustedTheta);
+            const y = radius * Math.sin(phi); // Vertical position
+            const z = radius * Math.cos(phi) * Math.sin(adjustedTheta);
+            
+            // Position relative to camera
+            return cameraPos.clone().add(new THREE.Vector3(x, y, z));
+        }
+
+        // Visualize WiFi networks in 3D
+        function visualizeNetworks(networks) {
+            // Remove old networks
+            wifiNetworks.forEach((mesh, ssid) => {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            wifiNetworks.clear();
+
+            const cameraPos = camera.position.clone();
+            const cameraDir = new THREE.Vector3();
+            camera.getWorldDirection(cameraDir);
+
+            networks.forEach(network => {
+                const position = calculateWiFiPosition(network, cameraPos, cameraDir);
+                
+                // Create sphere for WiFi signal
+                const geometry = new THREE.SphereGeometry(0.3, 16, 16);
+                const signalLevel = network.signal_level || -70;
+                const intensity = Math.max(0.3, Math.min(1.0, (signalLevel + 100) / 50));
+                
+                // Color based on signal strength: green = strong, red = weak
+                const color = new THREE.Color();
+                if (signalLevel > -50) {
+                    color.setRGB(0, 1, 0); // Green
+                } else if (signalLevel > -70) {
+                    color.setRGB(1, 1, 0); // Yellow
+                } else {
+                    color.setRGB(1, 0, 0); // Red
+                }
+                
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: color,
+                    transparent: true,
+                    opacity: intensity
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.copy(position);
+                
+                // Add label
+                const loader = new THREE.FontLoader();
+                // For now, just add a simple text indicator
+                const labelGeometry = new THREE.RingGeometry(0.35, 0.4, 16);
+                const labelMaterial = new THREE.MeshBasicMaterial({ 
+                    color: color,
+                    transparent: true,
+                    opacity: 0.5,
+                    side: THREE.DoubleSide
+                });
+                const label = new THREE.Mesh(labelGeometry, labelMaterial);
+                label.lookAt(camera.position);
+                mesh.add(label);
+                
+                scene.add(mesh);
+                
+                // Store network data for position updates
+                mesh.userData.network = network;
+                
+                wifiNetworks.set(network.ssid || network.bssid, mesh);
+            });
+        }
+
+        // Enable camera with device motion tracking
+        async function enableCamera() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                videoElement.srcObject = videoStream;
+                updateStatus('Camera enabled');
+                
+                // Start device motion tracking
+                startDeviceMotionTracking();
+                
+                // Start camera frame analysis
+                startCameraFrameAnalysis();
+            } catch (error) {
+                showError('Failed to enable camera: ' + error.message);
+            }
+        }
+        
+        // Device motion tracking (accelerometer + gyroscope)
+        function startDeviceMotionTracking() {
+            // Request device orientation permission
+            if (typeof DeviceOrientationEvent !== 'undefined' && 
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            window.addEventListener('deviceorientation', handleDeviceOrientation);
+                            window.addEventListener('devicemotion', handleDeviceMotion);
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Direct access (if permission not required)
+                window.addEventListener('deviceorientation', handleDeviceOrientation);
+                window.addEventListener('devicemotion', handleDeviceMotion);
+            }
+        }
+        
+        function handleDeviceOrientation(event) {
+            deviceOrientation = {
+                alpha: event.alpha || 0,  // Z-axis rotation (compass)
+                beta: event.beta || 0,   // X-axis rotation (front-back tilt)
+                gamma: event.gamma || 0   // Y-axis rotation (left-right tilt)
+            };
+            
+            // Update target camera rotation based on device orientation
+            // Convert device orientation to Three.js Euler angles
+            const betaRad = THREE.MathUtils.degToRad(deviceOrientation.beta);
+            const gammaRad = THREE.MathUtils.degToRad(deviceOrientation.gamma);
+            const alphaRad = THREE.MathUtils.degToRad(deviceOrientation.alpha);
+            
+            // Map device orientation to camera rotation
+            targetCameraRotation.set(
+                betaRad * 0.5,  // Pitch (tilt forward/back)
+                alphaRad,       // Yaw (compass direction)
+                -gammaRad * 0.5 // Roll (tilt left/right)
+            );
+        }
+        
+        function handleDeviceMotion(event) {
+            if (event.accelerationIncludingGravity) {
+                deviceAcceleration = {
+                    x: event.accelerationIncludingGravity.x || 0,
+                    y: event.accelerationIncludingGravity.y || 0,
+                    z: event.accelerationIncludingGravity.z || 0
+                };
+            }
+            
+            if (event.rotationRate) {
+                deviceRotationRate = {
+                    alpha: event.rotationRate.alpha || 0,
+                    beta: event.rotationRate.beta || 0,
+                    gamma: event.rotationRate.gamma || 0
+                };
+            }
+            
+            // Calculate movement from acceleration (integrate to get velocity, then position)
+            updatePositionFromAcceleration();
+        }
+        
+        // Update camera position based on device movement (like K29)
+        function updatePositionFromAcceleration() {
+            const deltaTime = 0.016; // ~60fps
+            
+            // Convert acceleration to movement in 3D space
+            // Use device orientation to determine movement direction
+            const moveSpeed = 0.1;
+            
+            // Calculate movement vector from device orientation and acceleration
+            const betaRad = THREE.MathUtils.degToRad(deviceOrientation.beta);
+            const gammaRad = THREE.MathUtils.degToRad(deviceOrientation.gamma);
+            const alphaRad = THREE.MathUtils.degToRad(deviceOrientation.alpha);
+            
+            // Forward direction based on device orientation
+            const forward = new THREE.Vector3(
+                Math.sin(alphaRad) * Math.cos(betaRad),
+                -Math.sin(betaRad),
+                -Math.cos(alphaRad) * Math.cos(betaRad)
+            );
+            
+            // Right direction
+            const right = new THREE.Vector3(
+                Math.cos(alphaRad),
+                0,
+                Math.sin(alphaRad)
+            );
+            
+            // Movement from acceleration (subtract gravity ~9.8)
+            const accelX = (deviceAcceleration.x || 0) / 9.8;
+            const accelY = ((deviceAcceleration.y || 0) - 9.8) / 9.8; // Subtract gravity
+            const accelZ = (deviceAcceleration.z || 0) / 9.8;
+            
+            // Combine movement
+            const movement = new THREE.Vector3();
+            movement.addScaledVector(forward, accelZ * moveSpeed);
+            movement.addScaledVector(right, accelX * moveSpeed);
+            movement.y += accelY * moveSpeed * 0.5; // Vertical movement (damped)
+            
+            // Update target position with smooth movement
+            targetCameraPosition.add(movement);
+            
+            // Clamp position to reasonable bounds
+            targetCameraPosition.x = Math.max(-20, Math.min(20, targetCameraPosition.x));
+            targetCameraPosition.y = Math.max(0.5, Math.min(5, targetCameraPosition.y));
+            targetCameraPosition.z = Math.max(-20, Math.min(20, targetCameraPosition.z));
+        }
+        
+        // Camera frame analysis for surface feature detection (hallucination technique from K29)
+        function startCameraFrameAnalysis() {
+            if (!videoElement || !frameContext) return;
+            
+            function analyzeFrame() {
+                if (videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
+                    // Draw current frame to canvas
+                    frameContext.drawImage(videoElement, 0, 0, frameCanvas.width, frameCanvas.height);
+                    
+                    // Get image data
+                    const imageData = frameContext.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
+                    
+                    // Extract surface features (hallucination)
+                    const features = extractSurfaceFeatures(imageData);
+                    surfaceFeatures = features;
+                    
+                    // Detect movement from frame differences
+                    if (lastFrame) {
+                        const movement = detectMovement(lastFrame, imageData);
+                        movementHistory.push({
+                            timestamp: Date.now(),
+                            movement: movement,
+                            features: features
+                        });
+                        
+                        // Keep last 10 frames
+                        if (movementHistory.length > 10) {
+                            movementHistory.shift();
+                        }
+                    }
+                    
+                    // Store current frame for next comparison
+                    lastFrame = new ImageData(
+                        new Uint8ClampedArray(imageData.data),
+                        imageData.width,
+                        imageData.height
+                    );
+                }
+                
+                requestAnimationFrame(analyzeFrame);
+            }
+            
+            analyzeFrame();
+        }
+        
+        // Extract surface features from camera frames (hallucination technique)
+        function extractSurfaceFeatures(imageData) {
+            const features = [];
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            
+            // Sample features at grid points (reduced resolution for performance)
+            const gridSize = 8;
+            const stepX = Math.floor(width / gridSize);
+            const stepY = Math.floor(height / gridSize);
+            
+            for (let y = 0; y < height; y += stepY) {
+                for (let x = 0; x < width; x += stepX) {
+                    const idx = (y * width + x) * 4;
+                    
+                    // Extract RGB values
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+                    
+                    // Calculate brightness and edge detection
+                    const brightness = (r + g + b) / 3;
+                    const edge = calculateEdgeStrength(data, x, y, width, height);
+                    
+                    features.push({
+                        x: x / width,
+                        y: y / height,
+                        brightness: brightness / 255,
+                        color: { r: r / 255, g: g / 255, b: b / 255 },
+                        edge: edge
+                    });
+                }
+            }
+            
+            return features;
+        }
+        
+        // Simple edge detection (for surface feature detection)
+        function calculateEdgeStrength(data, x, y, width, height) {
+            if (x === 0 || y === 0 || x >= width - 1 || y >= height - 1) return 0;
+            
+            const idx = (y * width + x) * 4;
+            const idxRight = (y * width + (x + 1)) * 4;
+            const idxBottom = ((y + 1) * width + x) * 4;
+            
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            const brightnessRight = (data[idxRight] + data[idxRight + 1] + data[idxRight + 2]) / 3;
+            const brightnessBottom = (data[idxBottom] + data[idxBottom + 1] + data[idxBottom + 2]) / 3;
+            
+            const edgeX = Math.abs(brightness - brightnessRight);
+            const edgeY = Math.abs(brightness - brightnessBottom);
+            
+            return Math.sqrt(edgeX * edgeX + edgeY * edgeY) / 255;
+        }
+        
+        // Detect movement between frames (like K29 belt tracking)
+        function detectMovement(lastFrame, currentFrame) {
+            if (!lastFrame || !currentFrame) return { type: 'none', confidence: 0 };
+            
+            const lastData = lastFrame.data;
+            const currentData = currentFrame.data;
+            const width = lastFrame.width;
+            const height = lastFrame.height;
+            
+            // Calculate frame difference
+            let totalDiff = 0;
+            let maxDiff = 0;
+            
+            // Sample every 4th pixel for performance
+            for (let i = 0; i < lastData.length; i += 16) {
+                const diff = Math.abs(lastData[i] - currentData[i]);
+                totalDiff += diff;
+                maxDiff = Math.max(maxDiff, diff);
+            }
+            
+            const avgDiff = totalDiff / (lastData.length / 16);
+            const movementValue = avgDiff / 255;
+            
+            // Classify movement type
+            let movementType = 'none';
+            let confidence = 0;
+            
+            if (movementValue > 0.3) {
+                movementType = 'fast';
+                confidence = Math.min(1.0, movementValue * 2);
+            } else if (movementValue > 0.1) {
+                movementType = 'moderate';
+                confidence = movementValue * 3;
+            } else if (movementValue > 0.05) {
+                movementType = 'slow';
+                confidence = movementValue * 5;
+            }
+            
+            return {
+                type: movementType,
+                confidence: confidence,
+                movementValue: movementValue
+            };
+        }
+
+        // Animation loop with smooth interpolation (K29 technique)
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const deltaTime = 0.016; // ~60fps
+            
+            // Handle zoom out when Shift is pressed
+            if (isZoomedOut) {
+                // Zoom out to see the sphere from outside
+                const zoomTarget = calculateZoomedOutPosition();
+                cameraPosition.lerp(zoomTarget, followSpeed * deltaTime);
+                
+                // Look at the center of the WiFi sphere (where camera was originally)
+                camera.lookAt(originalCameraPosition);
+            } else {
+                // Normal camera movement
+                cameraPosition.lerp(targetCameraPosition, followSpeed * deltaTime);
+                
+                // Smooth camera rotation interpolation (Quaternion.Slerp equivalent)
+                const currentQuaternion = new THREE.Quaternion().setFromEuler(cameraRotation);
+                const targetQuaternion = new THREE.Quaternion().setFromEuler(targetCameraRotation);
+                currentQuaternion.slerp(targetQuaternion, rotationSpeed * deltaTime);
+                cameraRotation.setFromQuaternion(currentQuaternion);
+            }
+            
+            // Apply to camera
+            camera.position.copy(cameraPosition);
+            if (!isZoomedOut) {
+                camera.rotation.copy(cameraRotation);
+            }
+            
+            // Update WiFi network positions in sphere around camera
+            updateWiFiPositionsInSphere();
+            
+            // Visualize surface features (hallucinated from camera)
+            visualizeSurfaceFeatures();
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Update WiFi positions in sphere around camera
+        function updateWiFiPositionsInSphere() {
+            // When zoomed out, use original camera position as center of sphere
+            // When zoomed in, use current camera position
+            const sphereCenter = isZoomedOut ? originalCameraPosition : cameraPosition;
+            const cameraDir = new THREE.Vector3();
+            camera.getWorldDirection(cameraDir);
+            
+            // Update WiFi network positions in spherical arrangement
+            wifiNetworks.forEach((mesh, ssid) => {
+                const networkData = mesh.userData.network;
+                if (networkData) {
+                    // Calculate position in sphere around the center point
+                    const targetPosition = calculateWiFiPosition(networkData, sphereCenter, cameraDir);
+                    // Smooth interpolation to new position
+                    mesh.position.lerp(targetPosition, 0.1);
+                }
+            });
+        }
+        
+        // Visualize surface features extracted from camera (hallucination visualization)
+        let surfaceFeatureObjects = [];
+        function visualizeSurfaceFeatures() {
+            // Remove old feature visualizations
+            surfaceFeatureObjects.forEach(obj => scene.remove(obj));
+            surfaceFeatureObjects = [];
+            
+            if (surfaceFeatures.length === 0) return;
+            
+            // Create visualization of detected surface features
+            surfaceFeatures.forEach(feature => {
+                // Convert normalized coordinates to 3D space
+                // Project features onto a plane in front of the camera
+                const distance = 5; // Distance from camera
+                const fov = camera.fov * Math.PI / 180;
+                const aspect = camera.aspect;
+                
+                const x = (feature.x - 0.5) * 2 * Math.tan(fov / 2) * distance * aspect;
+                const y = -(feature.y - 0.5) * 2 * Math.tan(fov / 2) * distance;
+                
+                // Position relative to camera
+                const worldPos = new THREE.Vector3(x, y, -distance);
+                worldPos.applyMatrix4(camera.matrixWorld);
+                
+                // Create small sphere for feature point
+                const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+                const material = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(feature.color.r, feature.color.g, feature.color.b),
+                    transparent: true,
+                    opacity: feature.brightness * 0.5 + feature.edge * 0.5
+                });
+                
+                const sphere = new THREE.Mesh(geometry, material);
+                sphere.position.copy(worldPos);
+                scene.add(sphere);
+                surfaceFeatureObjects.push(sphere);
+            });
+        }
+
+        // Event listeners
+        document.getElementById('start-btn').addEventListener('click', () => {
+            const pollInterval = parseInt(document.getElementById('poll-interval').value);
+            
+            if (socket && socket.connected) {
+                // Send polling interval to server for Socket.IO scanning
+                socket.emit('wifi:start-scanning', { interval: pollInterval });
+            } else {
+                // Fallback to HTTP polling if socket not connected
+                startHttpPolling();
+                updateStatus('Starting HTTP polling (socket not connected)');
+            }
+            
+            // Also start HTTP polling if auto-poll is enabled
+            const autoPoll = document.getElementById('auto-poll').checked;
+            if (autoPoll) {
+                startHttpPolling();
+            }
+        });
+
+        document.getElementById('stop-btn').addEventListener('click', () => {
+            if (socket && socket.connected) {
+                socket.emit('wifi:stop-scanning');
+            }
+            stopHttpPolling();
+        });
+
+        document.getElementById('camera-btn').addEventListener('click', enableCamera);
+
+        // Polling interval change handler
+        document.getElementById('poll-interval').addEventListener('change', () => {
+            if (isPolling && httpPollInterval) {
+                // Restart polling with new interval
+                startHttpPolling();
+            }
+        });
+
+        // Auto-poll checkbox handler
+        document.getElementById('auto-poll').addEventListener('change', (e) => {
+            if (e.target.checked && isPolling) {
+                // If polling is already active, ensure it continues
+                if (!httpPollInterval) {
+                    startHttpPolling();
+                }
+            } else if (!e.target.checked) {
+                // Only stop HTTP polling, keep socket scanning if active
+                stopHttpPolling();
+            }
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Handle Shift key for zoom out
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Shift' && !e.repeat) {
+                isZoomedOut = true;
+                // Store current position as original when starting zoom
+                originalCameraPosition = cameraPosition.clone();
+                updateStatus('Zoomed out - Release Shift to return');
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') {
+                isZoomedOut = false;
+                // Reset target to current position when zooming back in
+                targetCameraPosition = cameraPosition.clone();
+                updateStatus('Zoomed in');
+            }
+        });
+
+        // Initialize
+        connectSocket();
+        animate();
+        
+        // Auto-start polling if enabled and socket isn't ready after 2 seconds
+        setTimeout(() => {
+            const autoPoll = document.getElementById('auto-poll').checked;
+            if (autoPoll && (!socket || !socket.connected)) {
+                updateStatus('Auto-starting HTTP polling...');
+                startHttpPolling();
+            }
+        }, 2000);
+    </script>
+</body>
+</html>
+

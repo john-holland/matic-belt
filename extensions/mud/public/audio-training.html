@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Training Data Collection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #00ff00;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #00ff00;
+            padding-bottom: 10px;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            color: #00ff00;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .status.ready {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00ff00;
+            color: #00ff00;
+        }
+
+        .status.recording {
+            background: rgba(255, 0, 0, 0.1);
+            border: 1px solid #ff0000;
+            color: #ff0000;
+            animation: pulse 1s infinite;
+        }
+
+        .status.stopped {
+            background: rgba(255, 200, 0, 0.1);
+            border: 1px solid #ffc800;
+            color: #ffc800;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        input, select {
+            background: #000;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+        }
+
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #00cc00;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .sample-info {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
+        .sample-info h3 {
+            color: #00ff00;
+            margin-bottom: 5px;
+        }
+
+        .statistics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .stat-item h4 {
+            color: #00ff00;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .stat-item .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .instructions {
+            background: rgba(0, 255, 0, 0.1);
+            border-left: 3px solid #00ff00;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .instructions h3 {
+            color: #00ff00;
+            margin-bottom: 10px;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Audio Training Data Collection</h1>
+
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <ul>
+                <li>Select or enter a mood and mode for your recording</li>
+                <li>Press SPACE to start recording</li>
+                <li>Press SPACE again to stop recording</li>
+                <li>The audio will be saved with metadata for training</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Recording Controls</h2>
+            <div id="status" class="status ready">Ready to record</div>
+            
+            <div class="controls">
+                <input type="text" id="mood-input" placeholder="Mood (e.g., happy, sad, energetic)" list="moods">
+                <datalist id="moods">
+                    <option value="happy">
+                    <option value="sad">
+                    <option value="energetic">
+                    <option value="calm">
+                    <option value="melancholic">
+                    <option value="excited">
+                    <option value="peaceful">
+                    <option value="intense">
+                    <option value="playful">
+                    <option value="serious">
+                    <option value="nostalgic">
+                    <option value="uplifting">
+                </datalist>
+                
+                <input type="text" id="mode-input" placeholder="Mode (e.g., whistling, humming)" list="modes">
+                <datalist id="modes">
+                    <option value="whistling">
+                    <option value="humming">
+                    <option value="singing">
+                    <option value="instrumental">
+                    <option value="beatboxing">
+                    <option value="scat">
+                    <option value="vocalization">
+                    <option value="percussion">
+                    <option value="melody">
+                    <option value="rhythm">
+                </datalist>
+                
+                <button id="set-mood-mode">Set</button>
+            </div>
+
+            <div class="controls">
+                <button id="start-recording">Start Recording (SPACE)</button>
+                <button id="stop-recording" disabled>Stop Recording (SPACE)</button>
+            </div>
+
+            <div id="sample-info" class="sample-info" style="display: none;">
+                <h3>Last Sample:</h3>
+                <div id="sample-details"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Dataset Statistics</h2>
+            <div class="statistics" id="statistics">
+                <div class="stat-item">
+                    <h4>Total Samples</h4>
+                    <div class="value" id="total-samples">0</div>
+                </div>
+                <div class="stat-item">
+                    <h4>Total Duration</h4>
+                    <div class="value" id="total-duration">0s</div>
+                </div>
+                <div class="stat-item">
+                    <h4>Avg Duration</h4>
+                    <div class="value" id="avg-duration">0s</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Note: This would need to be adapted to work with the actual AudioRecorder implementation
+        // For now, this is a template that shows the UI structure
+        
+        let isRecording = false;
+        let currentMood = '';
+        let currentMode = '';
+
+        const statusEl = document.getElementById('status');
+        const startBtn = document.getElementById('start-recording');
+        const stopBtn = document.getElementById('stop-recording');
+        const moodInput = document.getElementById('mood-input');
+        const modeInput = document.getElementById('mode-input');
+        const setBtn = document.getElementById('set-mood-mode');
+        const sampleInfo = document.getElementById('sample-info');
+        const sampleDetails = document.getElementById('sample-details');
+
+        setBtn.addEventListener('click', () => {
+            currentMood = moodInput.value.trim() || 'unknown';
+            currentMode = modeInput.value.trim() || 'whistling';
+            updateStatus(`Ready to record: ${currentMood} ${currentMode}`, 'ready');
+        });
+
+        async function startRecording() {
+            if (!currentMood || !currentMode) {
+                alert('Please set mood and mode first');
+                return;
+            }
+
+            // TODO: Implement actual recording using AudioRecorder
+            isRecording = true;
+            updateStatus('🎤 Recording... (Press SPACE to stop)', 'recording');
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        }
+
+        async function stopRecording() {
+            // TODO: Implement actual stop and save using AudioRecorder
+            isRecording = false;
+            updateStatus('⏹️ Recording stopped', 'stopped');
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            // Show sample info
+            sampleInfo.style.display = 'block';
+            sampleDetails.innerHTML = `
+                <strong>Mood:</strong> ${currentMood}<br>
+                <strong>Mode:</strong> ${currentMode}<br>
+                <strong>Duration:</strong> 0.00s (example)
+            `;
+        }
+
+        function updateStatus(message, type) {
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.repeat) {
+                e.preventDefault();
+                if (isRecording) {
+                    stopRecording();
+                } else {
+                    startRecording();
+                }
+            }
+        });
+
+        // Update statistics (would be connected to actual dataset)
+        function updateStatistics(stats) {
+            document.getElementById('total-samples').textContent = stats.totalSamples || 0;
+            document.getElementById('total-duration').textContent = (stats.totalDuration || 0).toFixed(2) + 's';
+            document.getElementById('avg-duration').textContent = (stats.averageDuration || 0).toFixed(2) + 's';
+        }
+    </script>
+</body>
+</html>
+

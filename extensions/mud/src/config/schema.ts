@@ -8,7 +8,7 @@ export interface BrowserConfig {
 }
 
 export interface AIConfig {
-    type: 'gemini' | 'claude' | 'gpt4';
+    type: 'gemini' | 'claude' | 'gpt4' | 'local';
     url: string;
     selectors: {
         input: string;

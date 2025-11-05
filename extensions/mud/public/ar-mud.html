@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI MUD - AR Display</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.5/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <!-- MIDI library removed - was causing CommonJS exports error in browser -->
+    <!-- If MIDI functionality is needed, use a browser-compatible version -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        /* 3D Fullscreen Section */
+        #ar-section {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* Scrollable MUD Section */
+        #mud-section {
+            position: relative;
+            z-index: 2;
+            margin-top: 100vh;
+            background: #1a1a1a;
+            min-height: 100vh;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #00ff00;
+            min-width: 300px;
+            z-index: 10;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #00ff00;
+            z-index: 10;
+            max-width: 400px;
+        }
+
+        .control-group {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+
+        .control-group h4 {
+            margin-bottom: 10px;
+            color: #00ff00;
+            font-size: 12px;
+        }
+
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            margin: 3px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        button:hover {
+            background: #00cc00;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        button.active {
+            background: #ffaa00;
+            color: #000;
+        }
+
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 255, 0, 0.1);
+            border-radius: 4px;
+            border: 1px solid #00ff00;
+            font-size: 11px;
+        }
+
+        .detected-object {
+            margin: 5px 0;
+            padding: 5px;
+            background: rgba(0, 255, 0, 0.05);
+            border-left: 3px solid #00ff00;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .mud-message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .mud-message.system {
+            background: rgba(0, 255, 0, 0.1);
+            border-left: 3px solid #00ff00;
+        }
+
+        .mud-message.ai {
+            background: rgba(255, 200, 0, 0.1);
+            border-left: 3px solid #ffc800;
+        }
+
+        .mud-message.error {
+            background: rgba(255, 0, 0, 0.1);
+            border-left: 3px solid #ff0000;
+        }
+
+        #ar-status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #00ff00;
+            z-index: 10;
+            font-size: 11px;
+        }
+
+        .ml-info {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        input[type="text"], textarea {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 11px;
+            width: 100%;
+            margin: 5px 0;
+        }
+
+        textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+
+        .prompt-container {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: 5px 0;
+        }
+
+        .prompt-container textarea {
+            flex: 1;
+        }
+
+        .prompt-container label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            font-size: 11px;
+            color: #00ff00;
+        }
+
+        input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        /* MUD Terminal Section */
+        #terminal {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #output {
+            height: 70vh;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+
+        #input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        #prompt {
+            color: #0f0;
+            margin-right: 10px;
+        }
+
+        #command-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-family: inherit;
+            font-size: inherit;
+            outline: none;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .system {
+            color: #888;
+        }
+
+        .error {
+            color: #f44;
+            background: rgba(255, 0, 0, 0.1);
+        }
+
+        .success {
+            color: #0f0;
+        }
+
+        .ai-message {
+            background: rgba(0, 255, 0, 0.1);
+            border-left: 3px solid #0f0;
+        }
+
+        .ascii-preview {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            line-height: 1;
+            background: #000;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow: auto;
+            white-space: pre;
+        }
+    </style>
+</head>
+<body>
+    <!-- 3D Fullscreen Section -->
+    <div id="ar-section">
+        <div id="canvas-container"></div>
+
+        <div id="overlay">
+            <h3>AI MUD - AR Display</h3>
+            <div id="status" class="status">
+                <div><strong>Status:</strong> <span id="status-text">Initializing...</span></div>
+                <div><strong>AR Mode:</strong> <span id="ar-mode">Not Active</span></div>
+            </div>
+            <div id="mud-messages"></div>
+        </div>
+
+        <div id="controls">
+            <div class="control-group">
+                <h4>AR Controls</h4>
+                <button id="start-ar">Start AR</button>
+                <button id="stop-ar" disabled>Stop AR</button>
+                <button id="enable-ml">Enable ML</button>
+                <button id="enable-camera">Enable Camera</button>
+            </div>
+
+            <div class="control-group">
+                <h4>Camera Modes</h4>
+                <button id="mode-normal" class="active">Normal</button>
+                <button id="mode-ai-broadcast">AI Broadcast</button>
+                <button id="mode-ai-picture">AI Picture</button>
+                <div id="ml-status" class="ml-info">ML: Not initialized</div>
+            </div>
+
+            <div class="control-group" id="ai-broadcast-controls" style="display: none;">
+                <h4>AI Broadcast</h4>
+                <button id="start-broadcast">Start Broadcast</button>
+                <button id="stop-broadcast" disabled>Stop Broadcast</button>
+                <label>Poll Interval (ms):</label>
+                <input type="number" id="broadcast-interval" value="5000" min="1000" max="60000">
+                <label>Select AI:</label>
+                <select id="ai-broadcast-select" style="margin-bottom: 10px; padding: 5px; width: 100%; background: #1a1a1a; color: #fff; border: 1px solid #333;">
+                    <option value="gemini">Gemini</option>
+                    <option value="gpt4">GPT-4</option>
+                    <option value="claude">Claude</option>
+                    <option value="local">Local (Ollama)</option>
+                </select>
+                <label>AI Prompt:</label>
+                <div class="prompt-container">
+                    <textarea id="ai-broadcast-prompt" placeholder="Analyze this image and provide suggestions for room arrangement, or send commands for drone/robot control...">Analyze this ASCII image from my camera feed. Provide actionable suggestions based on what you see. If this is a room, suggest arrangement improvements. If this is a robot or drone view, provide control commands.</textarea>
+                    <label>
+                        <input type="checkbox" id="broadcast-edge-detection">
+                        Edge Detection
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-group" id="ai-picture-controls" style="display: none;">
+                <h4>AI Picture</h4>
+                <button id="capture-picture">Capture & Send</button>
+                <label>Select AI:</label>
+                <select id="ai-picture-select" style="margin-bottom: 10px; padding: 5px; width: 100%; background: #1a1a1a; color: #fff; border: 1px solid #333;">
+                    <option value="gemini">Gemini</option>
+                    <option value="gpt4">GPT-4</option>
+                    <option value="claude">Claude</option>
+                    <option value="local">Local (Ollama)</option>
+                </select>
+                <label>AI Prompt:</label>
+                <div class="prompt-container">
+                    <textarea id="ai-picture-prompt" placeholder="Enter your prompt for this image...">Analyze this ASCII image from my camera. What do you see? Provide insights and suggestions.</textarea>
+                    <label>
+                        <input type="checkbox" id="picture-edge-detection">
+                        Edge Detection
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h4>MIDI Recording</h4>
+                <button id="start-midi">Start Recording</button>
+                <button id="stop-midi" disabled>Stop Recording</button>
+                <button id="analyze-midi" disabled>Analyze & Send to AI</button>
+                <div id="midi-status" class="ml-info">Not recording</div>
+            </div>
+        </div>
+
+        <div id="ar-status">
+            <div><strong>Object Detection:</strong> <span id="object-count">0</span> objects</div>
+            <div><strong>Pose Tracking:</strong> <span id="pose-status">Inactive</span></div>
+            <div><strong>WiFi Networks:</strong> <span id="wifi-count">0</span></div>
+        </div>
+    </div>
+
+    <!-- Scrollable MUD Section -->
+    <div id="mud-section">
+        <div id="terminal">
+            <div id="output"></div>
+            <div id="input-container">
+                <span id="prompt">$</span>
+                <input type="text" id="command-input" autofocus>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/mud.js"></script>
+    <script>
+        // Three.js setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        renderer.xr.enabled = true;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Socket.IO connection
+        const socket = io();
+        
+        // Forward ai_response events to MUDInterface
+        socket.on('ai_response', (data) => {
+            console.log('🔔 AR socket received ai_response, forwarding to MUDInterface:', {
+                hasResponse: !!data.response,
+                type: data.type,
+                isCameraRequest: data.isCameraRequest,
+                responseLength: data.response?.length || 0
+            });
+            
+            // Forward to MUDInterface - manually trigger the handler since sockets are separate
+            if (window.mudInterface) {
+                // Check if MUDInterface has the handler method or if we can call it directly
+                // The handler is: socket.on('ai_response', (data) => {...})
+                // Since we're on a different socket, we need to manually trigger the handler
+                console.log('🔔 Manually triggering MUDInterface ai_response handler');
+                
+                // Create a mock event object that matches what the handler expects
+                // The handler in mud.js expects: data.response, data.type, data.isCameraRequest, etc.
+                try {
+                    // Access the handler by checking if socket has listeners
+                    // Or manually create the message elements like the handler does
+                    const output = window.mudInterface.output || document.getElementById('output');
+                    if (output) {
+                        const aiMessage = document.createElement('div');
+                        aiMessage.className = 'message ai-message';
+                        
+                        // Determine source label (same logic as mud.js)
+                        let sourceLabel = '';
+                        if (data.isFollowUp && data.githubQuery) {
+                            sourceLabel = ' (GitHub Search Follow-up)';
+                        } else if (data.githubQuery) {
+                            sourceLabel = ' (GitHub Search)';
+                        } else if (data.isCameraRequest || (data.prompt && (data.prompt.includes('ASCII') || data.prompt.includes('camera feed') || data.prompt.includes('ASCII representation')))) {
+                            sourceLabel = ' (Camera)';
+                        }
+                        
+                        // Show prompt if available
+                        if (data.question || data.prompt) {
+                            const question = document.createElement('div');
+                            question.textContent = `Q: ${data.question || data.prompt}`;
+                            question.style.fontWeight = 'bold';
+                            question.style.marginBottom = '5px';
+                            aiMessage.appendChild(question);
+                        } else {
+                            const header = document.createElement('div');
+                            header.textContent = `${data.type ? data.type.toUpperCase() : 'AI'} Response${sourceLabel}:`;
+                            header.style.fontWeight = 'bold';
+                            header.style.marginBottom = '5px';
+                            header.style.color = '#ffc800';
+                            aiMessage.appendChild(header);
+                        }
+                        
+                        const answer = document.createElement('div');
+                        const responseText = data.response || data.answer || JSON.stringify(data);
+                        if (typeof marked !== 'undefined' && marked.parse) {
+                            answer.innerHTML = marked.parse(responseText);
+                        } else {
+                            answer.textContent = responseText;
+                        }
+                        aiMessage.appendChild(answer);
+                        
+                        // Show credits if available
+                        if (data.credits !== undefined) {
+                            const credits = document.createElement('div');
+                            credits.style.fontSize = '11px';
+                            credits.style.color = '#888';
+                            credits.style.marginTop = '5px';
+                            credits.textContent = `Credits remaining: ${data.credits}`;
+                            aiMessage.appendChild(credits);
+                        }
+                        
+                        output.appendChild(aiMessage);
+                        output.scrollTop = output.scrollHeight;
+                        console.log('✅ Added AI response to MUD chat');
+                    } else {
+                        console.error('❌ MUD output element not found');
+                    }
+                } catch (error) {
+                    console.error('❌ Error manually triggering handler:', error);
+                }
+            } else {
+                // Fallback: directly add to MUD output if MUDInterface not ready
+                console.warn('⚠️ MUDInterface not ready, adding directly to output');
+                const mudOutput = document.getElementById('output');
+                if (mudOutput && data.response) {
+                    const aiMessage = document.createElement('div');
+                    aiMessage.className = 'message ai-message';
+                    
+                    const header = document.createElement('div');
+                    header.textContent = `${data.type ? data.type.toUpperCase() : 'AI'} Response${data.isCameraRequest ? ' (Camera)' : ''}:`;
+                    header.style.fontWeight = 'bold';
+                    header.style.marginBottom = '5px';
+                    header.style.color = '#ffc800';
+                    aiMessage.appendChild(header);
+                    
+                    const answer = document.createElement('div');
+                    const responseText = data.response || data.answer || JSON.stringify(data);
+                    if (typeof marked !== 'undefined' && marked.parse) {
+                        answer.innerHTML = marked.parse(responseText);
+                    } else {
+                        answer.textContent = responseText;
+                    }
+                    aiMessage.appendChild(answer);
+                    
+                    if (data.credits !== undefined) {
+                        const credits = document.createElement('div');
+                        credits.style.fontSize = '11px';
+                        credits.style.color = '#888';
+                        credits.style.marginTop = '5px';
+                        credits.textContent = `Credits remaining: ${data.credits}`;
+                        aiMessage.appendChild(credits);
+                    }
+                    
+                    mudOutput.appendChild(aiMessage);
+                    mudOutput.scrollTop = mudOutput.scrollHeight;
+                    console.log('✅ Added AI response directly to MUD output');
+                }
+            }
+        });
+        
+        // State
+        let objectDetector = null;
+        let poseDetector = null;
+        let videoStream = null;
+        let videoElement = null;
+        let detectedObjects = new Map();
+        let wifiNetworks = new Map();
+        let isARActive = false;
+        let isMLEnabled = false;
+        let mudMessages = [];
+        
+        // Camera mode state
+        let currentCameraMode = 'normal';
+        let aiBroadcastInterval = null;
+        let isBroadcasting = false;
+        
+        // MIDI recording state
+        let audioContext = null;
+        let mediaStreamSource = null;
+        let analyser = null;
+        let recorder = null;
+        let isRecordingMIDI = false;
+        let recordedAudioChunks = [];
+        // Note: MIDI functionality removed due to library compatibility issues
+        // Audio recording still works for analysis
+        
+        // ASCII conversion
+        const ASCII_CHARS = '@%#*+=-:. ';
+        
+        // Edge detection using Sobel operator
+        function applyEdgeDetection(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const output = new ImageData(width, height);
+            const outputData = output.data;
+            
+            // Sobel kernels
+            const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+            const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let gx = 0, gy = 0;
+                    
+                    // Apply Sobel operator
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const idx = ((y + ky) * width + (x + kx)) * 4;
+                            const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+                            const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                            gx += gray * sobelX[kernelIdx];
+                            gy += gray * sobelY[kernelIdx];
+                        }
+                    }
+                    
+                    // Calculate magnitude
+                    const magnitude = Math.sqrt(gx * gx + gy * gy);
+                    const edgeValue = Math.min(255, magnitude);
+                    
+                    const idx = (y * width + x) * 4;
+                    outputData[idx] = edgeValue;
+                    outputData[idx + 1] = edgeValue;
+                    outputData[idx + 2] = edgeValue;
+                    outputData[idx + 3] = 255;
+                }
+            }
+            
+            return output;
+        }
+        
+        function imageToASCII(imageData, width = 80, height = 40, useEdgeDetection = false) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Draw and resize image
+            ctx.drawImage(imageData, 0, 0, width, height);
+            
+            // Apply edge detection if enabled
+            if (useEdgeDetection) {
+                const imageDataObj = ctx.getImageData(0, 0, width, height);
+                const edgeData = applyEdgeDetection(imageDataObj);
+                ctx.putImageData(edgeData, 0, 0);
+            }
+            
+            const pixels = ctx.getImageData(0, 0, width, height).data;
+            
+            let ascii = '';
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = pixels[idx];
+                    const g = pixels[idx + 1];
+                    const b = pixels[idx + 2];
+                    const brightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+                    const charIndex = Math.floor((1 - brightness) * (ASCII_CHARS.length - 1));
+                    ascii += ASCII_CHARS[charIndex];
+                }
+                ascii += '\n';
+            }
+            return ascii;
+        }
+        
+        function captureFrameAsASCII(useEdgeDetection = false) {
+            if (!videoElement || videoElement.readyState < 2) return null;
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth || 640;
+            canvas.height = videoElement.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoElement, 0, 0);
+            
+            return imageToASCII(canvas, 80, 40, useEdgeDetection);
+        }
+        
+        // MIDI recording functions
+        async function startMIDIRecording() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+                
+                mediaStreamSource = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                mediaStreamSource.connect(analyser);
+                
+                // Simple audio recording (we'll convert to MIDI-like data)
+                recordedAudioChunks = [];
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                isRecordingMIDI = true;
+                document.getElementById('start-midi').disabled = true;
+                document.getElementById('stop-midi').disabled = false;
+                document.getElementById('midi-status').textContent = 'Recording...';
+                
+                // Collect audio data
+                const recordInterval = setInterval(() => {
+                    if (!isRecordingMIDI) {
+                        clearInterval(recordInterval);
+                        return;
+                    }
+                    analyser.getByteFrequencyData(dataArray);
+                    recordedAudioChunks.push(new Uint8Array(dataArray));
+                }, 100);
+                
+            } catch (error) {
+                console.error('Failed to start MIDI recording:', error);
+                updateStatus('MIDI recording error: ' + error.message);
+            }
+        }
+        
+        function stopMIDIRecording() {
+            isRecordingMIDI = false;
+            document.getElementById('start-midi').disabled = false;
+            document.getElementById('stop-midi').disabled = true;
+            document.getElementById('analyze-midi').disabled = false;
+            document.getElementById('midi-status').textContent = `Recorded ${recordedAudioChunks.length} samples`;
+            
+            if (mediaStreamSource) {
+                mediaStreamSource.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+        }
+        
+        async function analyzeAndSendMIDI() {
+            if (recordedAudioChunks.length === 0) {
+                updateStatus('No audio data recorded');
+                return;
+            }
+            
+            try {
+                updateStatus('Analyzing audio...');
+                
+                // Convert audio chunks to MIDI-like analysis
+                // This is a simplified version - in production, you'd use proper pitch detection
+                const analysis = {
+                    duration: recordedAudioChunks.length * 0.1, // seconds
+                    samples: recordedAudioChunks.length,
+                    frequencyData: recordedAudioChunks[0] || [],
+                    timestamp: Date.now()
+                };
+                
+                // Create a simplified music theory analysis
+                const musicAnalysis = {
+                    key: 'C',
+                    mode: 'major',
+                    tempo: 120,
+                    rhythm: {
+                        timeSignature: '4/4',
+                        tempo: 120,
+                        rhythmicPattern: 'standard'
+                    },
+                    melody: {
+                        range: 'C4-C5',
+                        contour: 'varied',
+                        intervals: []
+                    },
+                    harmony: {
+                        complexity: 0.5,
+                        tension: 0.3,
+                        resolution: 0.7
+                    },
+                    emotionalProfile: {
+                        valence: 0.6,
+                        energy: 0.7,
+                        complexity: 0.5
+                    },
+                    rawAnalysis: analysis
+                };
+                
+                // Format as prompt for AI
+                const prompt = `I've recorded audio and analyzed it. Here's the music theory analysis:
+
+Key: ${musicAnalysis.key} ${musicAnalysis.mode}
+Tempo: ${musicAnalysis.tempo} BPM
+Rhythm: ${musicAnalysis.rhythm.timeSignature}
+Harmony Complexity: ${(musicAnalysis.harmony.complexity * 100).toFixed(1)}%
+Emotional Profile: Valence ${(musicAnalysis.emotionalProfile.valence * 100).toFixed(1)}%, Energy ${(musicAnalysis.emotionalProfile.energy * 100).toFixed(1)}%
+
+Please analyze this music data and provide insights about what you hear.`;
+
+                // Send to AI via MUD
+                socket.emit('command', `ai gemini ${prompt}`);
+                addMUDMessage('Sent MIDI analysis to AI', 'system');
+                
+                document.getElementById('analyze-midi').disabled = true;
+                recordedAudioChunks = [];
+                
+            } catch (error) {
+                console.error('Failed to analyze MIDI:', error);
+                updateStatus('MIDI analysis error: ' + error.message);
+            }
+        }
+        
+        // AI Broadcast functions
+        function startAIBroadcast() {
+            if (!videoElement || videoElement.readyState < 2) {
+                updateStatus('Camera not ready for broadcast');
+                return;
+            }
+            
+            isBroadcasting = true;
+            document.getElementById('start-broadcast').disabled = true;
+            document.getElementById('stop-broadcast').disabled = false;
+            
+            const interval = parseInt(document.getElementById('broadcast-interval').value) || 5000;
+            const prompt = document.getElementById('ai-broadcast-prompt').value || 'Analyze this image.';
+            const selectedAI = document.getElementById('ai-broadcast-select')?.value || 'gemini';
+            
+            let lastBroadcastTime = 0;
+            const minInterval = 2000; // Rate limit: minimum 2 seconds between requests
+            
+            aiBroadcastInterval = setInterval(() => {
+                if (!isBroadcasting || !videoElement) return;
+                
+                const now = Date.now();
+                if (now - lastBroadcastTime < minInterval) return;
+                
+                const useEdgeDetection = document.getElementById('broadcast-edge-detection').checked;
+                const ascii = captureFrameAsASCII(useEdgeDetection);
+                if (ascii) {
+                    lastBroadcastTime = now;
+                    sendASCIIToAI(ascii, prompt, 'broadcast');
+                }
+            }, Math.max(interval, minInterval));
+            
+            updateStatus('AI Broadcast started');
+        }
+        
+        function stopAIBroadcast() {
+            isBroadcasting = false;
+            if (aiBroadcastInterval) {
+                clearInterval(aiBroadcastInterval);
+                aiBroadcastInterval = null;
+            }
+            document.getElementById('start-broadcast').disabled = false;
+            document.getElementById('stop-broadcast').disabled = true;
+            updateStatus('AI Broadcast stopped');
+        }
+        
+        function captureAIPicture() {
+            if (!videoElement || videoElement.readyState < 2) {
+                updateStatus('Camera not ready');
+                return;
+            }
+            
+            const useEdgeDetection = document.getElementById('picture-edge-detection').checked;
+            const ascii = captureFrameAsASCII(useEdgeDetection);
+            if (ascii) {
+                const prompt = document.getElementById('ai-picture-prompt').value || 'Analyze this image.';
+                sendASCIIToAI(ascii, prompt, 'picture');
+            }
+        }
+        
+        function sendASCIIToAI(ascii, prompt, mode) {
+            // Note: System preface is automatically added by server if conversation is new
+            // The server's handleAICommand will add the preface when conversation.length === 0
+            const fullPrompt = `${prompt}\n\nHere is the ASCII representation of the camera feed:\n\n\`\`\`\n${ascii}\n\`\`\``;
+            
+            // Get selected AI from dropdown
+            const aiSelectId = mode === 'broadcast' ? 'ai-broadcast-select' : 'ai-picture-select';
+            const selectedAI = document.getElementById(aiSelectId)?.value || 'gemini';
+            
+            console.log('📸 Sending ASCII to AI:', {
+                mode: mode,
+                aiType: selectedAI,
+                promptLength: prompt.length,
+                asciiLength: ascii.length,
+                fullPromptLength: fullPrompt.length,
+                socketConnected: socket.connected,
+                socketId: socket.id
+            });
+            
+            // Add metadata to help identify camera-based requests
+            try {
+                socket.emit('command', `ai ${selectedAI} ${fullPrompt}`);
+                console.log(`✅ Command emitted to server (${selectedAI})`);
+            } catch (error) {
+                console.error('❌ Error emitting command:', error);
+                updateStatus('Failed to send command: ' + error.message);
+            }
+            
+            // Show brief status in overlay (not the full response)
+            addMUDMessage(`📸 Sent ${mode} ASCII image to AI - Response will appear in chat below`, 'system');
+            
+            // Show preview in overlay (temporary)
+            const preview = document.createElement('div');
+            preview.className = 'ascii-preview';
+            preview.textContent = ascii.substring(0, 300) + (ascii.length > 300 ? '...' : '');
+            preview.style.marginTop = '10px';
+            preview.style.fontSize = '6px';
+            
+            const messagesDiv = document.getElementById('mud-messages');
+            messagesDiv.appendChild(preview);
+            
+            setTimeout(() => {
+                if (preview.parentNode) {
+                    preview.parentNode.removeChild(preview);
+                }
+            }, 3000);
+            
+            // Send ASCII to MUD chat interface
+            console.log('📸 Attempting to send ASCII to MUD chat:', {
+                mudInterfaceExists: !!window.mudInterface,
+                mudInterfaceType: typeof window.mudInterface,
+                hasAddMessage: window.mudInterface && typeof window.mudInterface.addMessage === 'function',
+                asciiLength: ascii.length,
+                mode: mode
+            });
+            
+            const mudOutput = document.getElementById('output');
+            console.log('📸 MUD output element:', {
+                exists: !!mudOutput,
+                id: mudOutput ? mudOutput.id : 'not found'
+            });
+            
+            if (window.mudInterface && typeof window.mudInterface.addMessage === 'function') {
+                try {
+                    console.log('📸 Using mudInterface.addMessage');
+                    window.mudInterface.addMessage(`📸 ${mode.toUpperCase()} ASCII Image:`, 'system');
+                    
+                    // Create ASCII preview in chat
+                    const asciiDiv = document.createElement('div');
+                    asciiDiv.className = 'ascii-preview';
+                    asciiDiv.style.fontFamily = 'Courier New, monospace';
+                    asciiDiv.style.fontSize = '8px';
+                    asciiDiv.style.lineHeight = '1';
+                    asciiDiv.style.background = '#000';
+                    asciiDiv.style.padding = '10px';
+                    asciiDiv.style.border = '1px solid #333';
+                    asciiDiv.style.borderRadius = '4px';
+                    asciiDiv.style.maxHeight = '300px';
+                    asciiDiv.style.overflow = 'auto';
+                    asciiDiv.style.whiteSpace = 'pre';
+                    asciiDiv.textContent = ascii;
+                    
+                    // Add to MUD chat output
+                    if (mudOutput) {
+                        mudOutput.appendChild(asciiDiv);
+                        mudOutput.scrollTop = mudOutput.scrollHeight;
+                        console.log('✅ ASCII added to MUD chat output');
+                    } else {
+                        console.error('❌ MUD output element not found');
+                    }
+                } catch (error) {
+                    console.error('❌ Error adding ASCII to MUD interface:', error);
+                    // Fallback to socket message
+                    socket.emit('message', {
+                        type: 'system',
+                        content: `📸 ${mode.toUpperCase()} ASCII Image:\n\n${ascii}`,
+                        isASCII: true
+                    });
+                    console.log('📤 Fallback: Sent ASCII via socket message event');
+                }
+            } else {
+                console.log('📤 Using fallback: socket message event');
+                // Fallback: emit as message event
+                socket.emit('message', {
+                    type: 'system',
+                    content: `📸 ${mode.toUpperCase()} ASCII Image:\n\n${ascii}`,
+                    isASCII: true
+                });
+                console.log('✅ ASCII sent via socket message event');
+            }
+            
+            // The AI response will appear in MUD chat via socket.io 'ai_response' event
+            // The mud.js handler will display it in the scrollable terminal section
+        }
+        
+        // Camera mode switching
+        function setCameraMode(mode) {
+            currentCameraMode = mode;
+            
+            // Update button states
+            document.getElementById('mode-normal').classList.toggle('active', mode === 'normal');
+            document.getElementById('mode-ai-broadcast').classList.toggle('active', mode === 'ai-broadcast');
+            document.getElementById('mode-ai-picture').classList.toggle('active', mode === 'ai-picture');
+            
+            // Show/hide controls
+            document.getElementById('ai-broadcast-controls').style.display = 
+                mode === 'ai-broadcast' ? 'block' : 'none';
+            document.getElementById('ai-picture-controls').style.display = 
+                mode === 'ai-picture' ? 'block' : 'none';
+            
+            // Stop broadcast if switching away
+            if (mode !== 'ai-broadcast' && isBroadcasting) {
+                stopAIBroadcast();
+            }
+        }
+
+        // Initialize TensorFlow.js and models
+        async function initializeML() {
+            try {
+                updateStatus('Loading ML models...');
+                
+                await tf.ready();
+                
+                objectDetector = await cocoSsd.load();
+                
+                if (typeof Pose !== 'undefined') {
+                    poseDetector = new Pose({
+                        locateFile: (file) => {
+                            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+                        }
+                    });
+                    
+                    poseDetector.setOptions({
+                        modelComplexity: 1,
+                        smoothLandmarks: true,
+                        enableSegmentation: true,
+                        smoothSegmentation: true,
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.5
+                    });
+                }
+                
+                isMLEnabled = true;
+                updateStatus('ML models loaded');
+                document.getElementById('ml-status').textContent = 'ML: Ready';
+            } catch (error) {
+                console.error('Failed to initialize ML:', error);
+                updateStatus('ML initialization failed: ' + error.message);
+                document.getElementById('ml-status').textContent = 'ML: Failed';
+            }
+        }
+
+        // Enable camera
+        async function enableCamera() {
+            try {
+                videoElement = document.createElement('video');
+                videoElement.setAttribute('playsinline', '');
+                videoElement.setAttribute('autoplay', '');
+                videoElement.setAttribute('muted', '');
+                videoElement.style.width = '320px';
+                videoElement.style.height = '240px';
+                videoElement.style.position = 'absolute';
+                videoElement.style.top = '10px';
+                videoElement.style.right = '10px';
+                videoElement.style.border = '2px solid #00ff00';
+                videoElement.style.borderRadius = '8px';
+                videoElement.style.zIndex = '5';
+                document.body.appendChild(videoElement);
+
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                videoElement.srcObject = videoStream;
+                updateStatus('Camera enabled');
+            } catch (error) {
+                console.error('Failed to enable camera:', error);
+                updateStatus('Camera error: ' + error.message);
+            }
+        }
+
+        // Start AR session
+        async function startAR() {
+            console.log('🎮 Starting AR session...', {
+                hasXR: !!navigator.xr,
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                hasCamera: !!videoStream,
+                hasVideoElement: !!videoElement
+            });
+            
+            // CRITICAL: WebXR requires camera permissions to be granted first
+            // Ensure camera is enabled before attempting WebXR session
+            if (!videoStream && !videoElement) {
+                console.log('📷 Camera not enabled yet. Enabling camera first...');
+                updateStatus('Enabling camera permissions...');
+                try {
+                    await enableCamera();
+                    console.log('✅ Camera enabled successfully');
+                } catch (error) {
+                    console.error('❌ Failed to enable camera:', error);
+                    updateStatus('Camera permission required for AR. Please enable camera first.');
+                    alert('Please click "Enable Camera" first to grant camera permissions, then try AR again.');
+                    return;
+                }
+            }
+            
+            if (!navigator.xr) {
+                console.log('ℹ️ WebXR not available, using camera-based AR fallback');
+                updateStatus('WebXR not supported. Using camera-based AR.');
+                if (!videoElement && !videoStream) {
+                    await enableCamera();
+                }
+                isARActive = true;
+                document.getElementById('ar-mode').textContent = 'Camera AR';
+                startCameraAR();
+                return;
+            }
+
+            // Check if WebXR is supported before requesting session
+            try {
+                const isSupported = await navigator.xr.isSessionSupported('immersive-ar');
+                console.log('🔍 WebXR immersive-ar support:', isSupported);
+                
+                if (!isSupported) {
+                    console.log('ℹ️ WebXR immersive-ar not supported, falling back to camera AR');
+                    updateStatus('WebXR not supported. Using camera-based AR.');
+                    if (!videoElement && !videoStream) {
+                        await enableCamera();
+                    }
+                    isARActive = true;
+                    document.getElementById('ar-mode').textContent = 'Camera AR';
+                    startCameraAR();
+                    return;
+                }
+            } catch (supportCheckError) {
+                console.warn('⚠️ Could not check WebXR support:', supportCheckError);
+                // Continue anyway - might work on some platforms
+            }
+
+            try {
+                console.log('🔍 Requesting WebXR session...');
+                // Ensure camera is available for WebXR
+                const session = await navigator.xr.requestSession('immersive-ar', {
+                    requiredFeatures: ['local', 'hit-test']
+                    // Removed 'dom-overlay' from optionalFeatures to avoid warning
+                });
+
+                console.log('✅ WebXR session created:', {
+                    mode: session.mode,
+                    inputSources: session.inputSources?.length || 0
+                });
+
+                renderer.xr.setSession(session);
+                isARActive = true;
+                document.getElementById('ar-mode').textContent = 'WebXR AR';
+                updateStatus('AR session started');
+                
+                session.addEventListener('end', () => {
+                    console.log('🛑 WebXR session ended');
+                    isARActive = false;
+                    document.getElementById('ar-mode').textContent = 'Not Active';
+                    updateStatus('AR session ended');
+                });
+                
+                session.addEventListener('error', (event) => {
+                    console.error('❌ WebXR session error:', event);
+                    updateStatus('AR session error occurred');
+                });
+            } catch (error) {
+                // WebXR not supported - fall back to camera-based AR (expected behavior)
+                console.log('ℹ️ WebXR session failed, using camera-based AR fallback:', error.message);
+                updateStatus('WebXR not available. Using camera-based AR.');
+                
+                // Suppress NotSupportedError - it's expected on desktop browsers
+                if (error.name !== 'NotSupportedError') {
+                    console.error('❌ WebXR error:', {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack,
+                        code: error.code,
+                        details: error.toString()
+                    });
+                    
+                    // If it's a permission or security error, provide helpful message
+                    if (error.message.includes('permission') || error.message.includes('Permission')) {
+                        console.warn('⚠️ Permission error - ensure camera permissions are granted');
+                        updateStatus('Camera permissions required. Please enable camera first.');
+                    }
+                }
+                
+                if (!videoElement && !videoStream) {
+                    try {
+                        await enableCamera();
+                    } catch (cameraError) {
+                        console.error('❌ Failed to enable camera fallback:', cameraError);
+                        updateStatus('Could not enable camera. Please check permissions.');
+                        return;
+                    }
+                }
+                isARActive = true;
+                document.getElementById('ar-mode').textContent = 'Camera AR';
+                startCameraAR();
+            }
+        }
+
+        // Camera-based AR (fallback)
+        function startCameraAR() {
+            if (!videoElement || !isMLEnabled) return;
+
+            const detectLoop = async () => {
+                if (!isARActive || !videoElement || videoElement.readyState < 2) {
+                    requestAnimationFrame(detectLoop);
+                    return;
+                }
+
+                try {
+                    if (objectDetector) {
+                        const predictions = await objectDetector.detect(videoElement);
+                        updateDetectedObjects(predictions);
+                    }
+
+                    if (poseDetector) {
+                        await poseDetector.send({ image: videoElement });
+                    }
+                } catch (error) {
+                    console.error('Detection error:', error);
+                }
+
+                requestAnimationFrame(detectLoop);
+            };
+
+            detectLoop();
+        }
+
+        // Update detected objects in 3D scene
+        function updateDetectedObjects(predictions) {
+            detectedObjects.forEach((obj, key) => {
+                scene.remove(obj);
+            });
+            detectedObjects.clear();
+
+            predictions.forEach((prediction, index) => {
+                const { bbox, class: className, score } = prediction;
+                
+                if (score > 0.5) {
+                    const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: score > 0.8 ? 0x00ff00 : 0xffaa00,
+                        transparent: true,
+                        opacity: 0.7
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    
+                    const x = (bbox[0] / 640) * 4 - 2;
+                    const y = -(bbox[1] / 480) * 3 + 1.5;
+                    const z = -2;
+                    
+                    mesh.position.set(x, y, z);
+                    mesh.userData = { className, score, bbox };
+                    
+                    scene.add(mesh);
+                    detectedObjects.set(className + index, mesh);
+                }
+            });
+
+            document.getElementById('object-count').textContent = detectedObjects.size;
+        }
+
+        // Socket.IO event handlers
+        socket.on('connect', () => {
+            updateStatus('Connected to MUD server');
+            socket.emit('initialize');
+        });
+
+        socket.on('message', (data) => {
+            // Only show system messages in overlay, not user commands or AI responses
+            const message = data.content || data.message || JSON.stringify(data);
+            const type = data.type || 'system';
+            
+            // Only add system/status messages to overlay, others go to MUD chat
+            if (type === 'system' && !message.includes('AI:') && !message.includes('Response')) {
+                addMUDMessage(message, type);
+            }
+            // User commands and AI responses are handled by MUD chat interface
+        });
+
+        socket.on('ai_response', (data) => {
+            // Don't add to overlay - let MUD chat handle it
+            // The MUD chat interface will receive this event via its own socket listener
+            // and display it in the scrollable terminal section below
+        });
+
+        socket.on('github_response', (data) => {
+            if (data.data && data.data.items) {
+                addMUDMessage(`Found ${data.data.items.length} repositories`, 'system');
+            }
+        });
+
+        socket.on('wifi:networks', (data) => {
+            updateWiFiNetworks(data.networks);
+        });
+
+        socket.on('error', (data) => {
+            const message = typeof data === 'string' ? data : (data.message || JSON.stringify(data));
+            addMUDMessage(message, 'error');
+        });
+
+        // Add MUD message to overlay
+        function addMUDMessage(message, type = 'system') {
+            const messagesDiv = document.getElementById('mud-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `mud-message ${type}`;
+            messageDiv.textContent = message;
+            messagesDiv.appendChild(messageDiv);
+            
+            mudMessages.push({ message, type, timestamp: Date.now() });
+            
+            if (mudMessages.length > 20) {
+                mudMessages.shift();
+                if (messagesDiv.firstChild) {
+                    messagesDiv.removeChild(messagesDiv.firstChild);
+                }
+            }
+            
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Update WiFi networks in 3D scene
+        function updateWiFiNetworks(networks) {
+            wifiNetworks.forEach((mesh, ssid) => {
+                scene.remove(mesh);
+            });
+            wifiNetworks.clear();
+
+            networks.forEach(network => {
+                const signalLevel = network.signal_level || -70;
+                const intensity = Math.max(0.3, Math.min(1.0, (signalLevel + 100) / 50));
+                
+                const geometry = new THREE.SphereGeometry(0.2, 16, 16);
+                const color = signalLevel > -50 ? 0x00ff00 : signalLevel > -70 ? 0xffff00 : 0xff0000;
+                const material = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: intensity
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                const distance = Math.max(1, Math.min(5, (signalLevel + 100) / 10));
+                const angle = Math.random() * Math.PI * 2;
+                mesh.position.set(
+                    Math.cos(angle) * distance,
+                    1.5,
+                    -Math.sin(angle) * distance
+                );
+                
+                mesh.userData = { network };
+                scene.add(mesh);
+                wifiNetworks.set(network.ssid || 'unknown', mesh);
+            });
+
+            document.getElementById('wifi-count').textContent = wifiNetworks.size;
+        }
+
+        // Update status
+        function updateStatus(text) {
+            document.getElementById('status-text').textContent = text;
+        }
+
+        // Setup scene
+        function setupScene() {
+            const gridHelper = new THREE.GridHelper(10, 10, 0x00ff00, 0x003300);
+            scene.add(gridHelper);
+
+            const axesHelper = new THREE.AxesHelper(2);
+            scene.add(axesHelper);
+
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(ambientLight, directionalLight);
+
+            camera.position.set(0, 1.6, 3);
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (isARActive && videoElement && videoElement.readyState >= 2) {
+                // Update positions based on camera tracking
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // Event listeners
+        // Start AR button - ensure proper initialization order
+        document.getElementById('start-ar').addEventListener('click', async () => {
+            // Best practice: Enable camera first if not already enabled
+            if (!videoStream && !videoElement) {
+                console.log('📷 Auto-enabling camera before AR (required for WebXR)...');
+                try {
+                    await enableCamera();
+                    // Small delay to ensure camera stream is ready
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } catch (error) {
+                    console.error('❌ Failed to auto-enable camera:', error);
+                    updateStatus('Camera permission required. Click "Enable Camera" first.');
+                    alert('Please click "Enable Camera" first to grant permissions, then try AR again.');
+                    return;
+                }
+            }
+            // Now start AR
+            await startAR();
+        });
+        document.getElementById('stop-ar').addEventListener('click', () => {
+            if (renderer.xr.isPresenting) {
+                renderer.xr.getSession()?.end();
+            }
+            isARActive = false;
+            document.getElementById('ar-mode').textContent = 'Not Active';
+            updateStatus('AR stopped');
+        });
+
+        document.getElementById('enable-ml').addEventListener('click', initializeML);
+        document.getElementById('enable-camera').addEventListener('click', enableCamera);
+        
+        // Camera mode buttons
+        document.getElementById('mode-normal').addEventListener('click', () => setCameraMode('normal'));
+        document.getElementById('mode-ai-broadcast').addEventListener('click', () => setCameraMode('ai-broadcast'));
+        document.getElementById('mode-ai-picture').addEventListener('click', () => setCameraMode('ai-picture'));
+        
+        // AI Broadcast controls
+        document.getElementById('start-broadcast').addEventListener('click', startAIBroadcast);
+        document.getElementById('stop-broadcast').addEventListener('click', stopAIBroadcast);
+        
+        // AI Picture controls
+        document.getElementById('capture-picture').addEventListener('click', captureAIPicture);
+        
+        // MIDI recording controls
+        document.getElementById('start-midi').addEventListener('click', startMIDIRecording);
+        document.getElementById('stop-midi').addEventListener('click', stopMIDIRecording);
+        document.getElementById('analyze-midi').addEventListener('click', analyzeAndSendMIDI);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Initialize
+        setupScene();
+        initializeML();
+        animate();
+        
+        // Connect to MUD WiFi scanning
+        socket.emit('wifi:start-scanning', { interval: 5 });
+        
+        // Initialize MUD interface in scrollable section
+        // Wait for mud.js to be fully loaded
+        function initializeMUDInterface() {
+            console.log('🔧 Attempting to initialize MUDInterface:', {
+                mudInterfaceDefined: typeof MUDInterface !== 'undefined',
+                documentReadyState: document.readyState,
+                outputElement: document.getElementById('output'),
+                mudJsLoaded: typeof MUDInterface !== 'undefined'
+            });
+            
+            if (typeof MUDInterface !== 'undefined') {
+                try {
+                    window.mudInterface = new MUDInterface();
+                    console.log('✅ MUD Interface initialized:', {
+                        mudInterface: window.mudInterface,
+                        hasAddMessage: typeof window.mudInterface.addMessage === 'function',
+                        outputElement: document.getElementById('output'),
+                        socketId: window.mudInterface.socket?.id,
+                        socketConnected: window.mudInterface.socket?.connected
+                    });
+                    
+                    // Verify socket is listening
+                    window.mudInterface.socket.on('ai_response', (data) => {
+                        console.log('🔔 MUDInterface socket received ai_response event:', !!data);
+                    });
+                } catch (error) {
+                    console.error('❌ Error initializing MUD Interface:', error);
+                    console.error('Error stack:', error.stack);
+                }
+            } else {
+                console.warn('⚠️ MUDInterface not found, make sure mud.js is loaded');
+                // Retry after a short delay
+                setTimeout(() => {
+                    if (typeof MUDInterface !== 'undefined') {
+                        initializeMUDInterface();
+                    } else {
+                        console.error('❌ MUDInterface still not available after retry');
+                    }
+                }, 1000);
+            }
+        }
+        
+        window.addEventListener('load', initializeMUDInterface);
+        
+        // Also try immediately if already loaded
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            setTimeout(initializeMUDInterface, 100);
+        }
+        
+        // Also check if mud.js loads after our script
+        const checkMUDInterface = setInterval(() => {
+            if (typeof MUDInterface !== 'undefined' && !window.mudInterface) {
+                console.log('🔄 MUDInterface found late, initializing...');
+                clearInterval(checkMUDInterface);
+                initializeMUDInterface();
+            }
+        }, 500);
+        
+        // Stop checking after 10 seconds
+        setTimeout(() => clearInterval(checkMUDInterface), 10000);
+    </script>
+</body>
+</html>

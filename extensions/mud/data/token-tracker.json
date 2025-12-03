@@ -3,14 +3,16 @@
     "maxTokens": 50,
     "refreshPeriodMs": 86400000,
     "tokensUsed": 0,
-    "lastResetDate": "2025-11-05T02:54:47.044Z",
-    "lastSpentDate": ""
+    "lastResetDate": "2025-12-03T06:08:38.630Z",
+    "lastSpentDate": "",
+    "lastDayUsed": ""
   },
   "openai": {
     "maxTokens": 200,
     "refreshPeriodMs": 86400000,
-    "tokensUsed": 1,
-    "lastResetDate": "2025-11-05T02:54:47.044Z",
-    "lastSpentDate": "2025-11-05T02:54:47.044Z"
+    "tokensUsed": 0,
+    "lastResetDate": "2025-12-03T06:08:38.631Z",
+    "lastSpentDate": "",
+    "lastDayUsed": ""
   }
 }

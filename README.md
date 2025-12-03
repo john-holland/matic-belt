@@ -97,6 +97,47 @@ npm start
 
 ---
 
+### 🔇 Local Area Resonance Balancer
+**Location:** `apps/resonance_balancer/`
+
+A creative audio utility that listens to local ambient sound, learns repeating resonance patterns, and emits an inverted waveform through the Web Audio API to selectively muffle or cancel persistent noise (e.g., HVAC hums or server fan whine).
+
+**Highlights:**
+- 3D microphone array sampling with rolling FFT analysis
+- Adaptive averaging window to capture “local area” resonance signatures
+- Real-time phase-aligned inversion output via `AudioWorklet`
+- Optional spatialization to target specific zones
+
+**Quick Start:**
+```bash
+cd apps/resonance_balancer
+npm install
+npm run dev
+```
+
+---
+
+### 🔥 Resonant Heater Field
+**Location:** `apps/resonant_heater/`
+
+An experimental installation that projects two opposing audio fields, causing a point of constructive/destructive interference that feels like a “warm” pocket of balanced resonance directly in front of the speaker rig.
+
+**Highlights:**
+- Coupled speaker pair with phase-drift monitoring
+- Thermal comfort proxy derived from SPL cancellation depth
+- Procedural resonance choreography for gentle “heat bloom” pulses
+- Safety watchdog that drops output when SPL exceeds configured limit
+- Enclosed 18 × 12 × 10 in cabinet spec with slot port to release a controllable plume
+
+**Quick Start:**
+```bash
+cd apps/resonant_heater
+npm install
+npm start
+```
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -199,4 +240,6 @@ See `LICENSE` file for details.
 ---
 
 *Built with ❤️ for exploration and experimentation*
+
+
 

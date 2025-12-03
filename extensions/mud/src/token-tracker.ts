@@ -7,6 +7,7 @@ export interface TokenLimit {
     tokensUsed: number;
     lastResetDate: string; // ISO date string
     lastSpentDate: string; // ISO date string
+    lastDayUsed: string; // Date string in YYYY-MM-DD format - tracks the calendar day tokens were last used
 }
 
 export interface TokenTrackerData {
@@ -47,16 +48,26 @@ export class TokenTracker {
     }
 
     /**
+     * Get current date in YYYY-MM-DD format
+     */
+    private getCurrentDateString(): string {
+        const now = new Date();
+        return now.toISOString().split('T')[0];
+    }
+
+    /**
      * Initialize or update token limit for a service
      */
     public initializeService(serviceName: string, maxTokens: number, refreshPeriodMs: number, tokensUsed: number = 0): void {
         const now = new Date().toISOString();
+        const currentDate = this.getCurrentDateString();
         this.data[serviceName] = {
             maxTokens,
             refreshPeriodMs,
             tokensUsed,
             lastResetDate: now,
-            lastSpentDate: tokensUsed > 0 ? now : ''
+            lastSpentDate: tokensUsed > 0 ? now : '',
+            lastDayUsed: tokensUsed > 0 ? currentDate : ''
         };
         this.saveData();
     }
@@ -73,12 +84,24 @@ export class TokenTracker {
         const timeSinceReset = now.getTime() - lastReset.getTime();
 
         if (timeSinceReset >= service.refreshPeriodMs) {
+            // Before resetting, ensure lastDayUsed is recorded if tokens were used
+            if (service.tokensUsed > 0 && !service.lastDayUsed && service.lastSpentDate) {
+                // If tokens were used but lastDayUsed wasn't set, extract date from lastSpentDate
+                const lastSpent = new Date(service.lastSpentDate);
+                service.lastDayUsed = lastSpent.toISOString().split('T')[0];
+            } else if (service.tokensUsed > 0 && !service.lastDayUsed) {
+                // Fallback: use current date if no lastSpentDate available
+                service.lastDayUsed = this.getCurrentDateString();
+            }
+            // Note: lastDayUsed is preserved through reset to maintain historical record
+            
             // Reset tokens
             service.tokensUsed = 0;
             service.lastResetDate = now.toISOString();
             service.lastSpentDate = '';
+            // lastDayUsed is NOT cleared - it preserves the calendar day tokens were last used
             this.saveData();
-            console.log(`🔄 Token limit reset for ${serviceName}: ${service.maxTokens} tokens available`);
+            console.log(`🔄 Token limit reset for ${serviceName}: ${service.maxTokens} tokens available${service.lastDayUsed ? ` (last used: ${service.lastDayUsed})` : ''}`);
             return true;
         }
         return false;
@@ -126,7 +149,9 @@ export class TokenTracker {
         }
 
         service.tokensUsed += amount;
-        service.lastSpentDate = new Date().toISOString();
+        const now = new Date();
+        service.lastSpentDate = now.toISOString();
+        service.lastDayUsed = this.getCurrentDateString(); // Record the calendar day tokens were used
         this.saveData();
         
         console.log(`💳 Spent ${amount} token(s) for ${serviceName}. Remaining: ${this.getRemainingTokens(serviceName)}/${service.maxTokens}`);
@@ -158,6 +183,7 @@ export class TokenTracker {
         used: number;
         timeUntilReset: number;
         lastSpentDate: string;
+        lastDayUsed: string;
     } | null {
         const service = this.data[serviceName];
         if (!service) return null;
@@ -170,7 +196,8 @@ export class TokenTracker {
             maxTokens: service.maxTokens,
             used: service.tokensUsed,
             timeUntilReset: this.getTimeUntilReset(serviceName),
-            lastSpentDate: service.lastSpentDate
+            lastSpentDate: service.lastSpentDate,
+            lastDayUsed: service.lastDayUsed || ''
         };
     }
 
@@ -184,6 +211,7 @@ export class TokenTracker {
         used: number;
         timeUntilReset: number;
         lastSpentDate: string;
+        lastDayUsed: string;
     }> {
         const statuses: Record<string, any> = {};
         for (const serviceName in this.data) {

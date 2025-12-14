@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
+models/
+*.tfjs
+coverage/
+

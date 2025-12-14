@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pillar Annealing Framework - Cog Pillar Design</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            padding: 30px;
+        }
+        
+        .controls {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+        }
+        
+        .control-group {
+            margin-bottom: 25px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        .button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .visualization {
+            background: #1a1a1a;
+            border-radius: 15px;
+            min-height: 600px;
+            position: relative;
+        }
+        
+        #canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 15px;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e8f4f8;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .status.error {
+            background: #fee;
+            border-left-color: #e74c3c;
+        }
+        
+        .status.success {
+            background: #efe;
+            border-left-color: #27ae60;
+        }
+        
+        .status h3 {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
+        .status p {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏛️ Pillar Annealing Framework</h1>
+            <p>Designing Ancient Roman Cog-Shaped Pillars with LSTM & Wind Flow Optimization</p>
+        </div>
+        
+        <div class="content">
+            <div class="controls">
+                <div class="control-group">
+                    <label>Location (Latitude)</label>
+                    <input type="number" id="lat" value="41.9028" step="0.0001" placeholder="41.9028">
+                </div>
+                
+                <div class="control-group">
+                    <label>Location (Longitude)</label>
+                    <input type="number" id="lng" value="12.4964" step="0.0001" placeholder="12.4964">
+                </div>
+                
+                <div class="control-group">
+                    <label>Build Area Width (meters)</label>
+                    <input type="number" id="areaWidth" value="30" min="10" max="100">
+                </div>
+                
+                <div class="control-group">
+                    <label>Build Area Height (meters)</label>
+                    <input type="number" id="areaHeight" value="30" min="10" max="100">
+                </div>
+                
+                <div class="control-group">
+                    <label>Number of Pillars</label>
+                    <input type="number" id="numPillars" value="8" min="3" max="20">
+                </div>
+                
+                <div class="control-group">
+                    <label>Kite Material</label>
+                    <select id="kiteMaterial">
+                        <option value="cloth">Cloth</option>
+                        <option value="paper">Paper</option>
+                        <option value="silk">Silk</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>Number of Kites</label>
+                    <input type="number" id="numKites" value="5" min="1" max="20">
+                </div>
+                
+                <button class="button" id="designBtn">Design Pillars & Kites</button>
+                
+                <div class="status" id="status" style="display: none;">
+                    <h3>Status</h3>
+                    <p id="statusText">Ready to design</p>
+                </div>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Optimizing pillar arrangement...</p>
+                </div>
+            </div>
+            
+            <div class="visualization">
+                <canvas id="canvas"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        // Note: This is a basic structure. In production, you'd want to use Three.js
+        // for full 3D visualization, load it via CDN or bundle it.
+        
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        const designBtn = document.getElementById('designBtn');
+        const status = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+        const loading = document.getElementById('loading');
+        
+        designBtn.addEventListener('click', async () => {
+            const location = {
+                lat: parseFloat(document.getElementById('lat').value),
+                lng: parseFloat(document.getElementById('lng').value)
+            };
+            
+            const constraints = {
+                minPillarSpacing: 3,
+                maxPillarSpacing: 15,
+                minPillarHeight: 2,
+                maxPillarHeight: 10,
+                buildArea: {
+                    width: parseFloat(document.getElementById('areaWidth').value),
+                    height: parseFloat(document.getElementById('areaHeight').value)
+                },
+                windShelter: false,
+                windDirection: 0
+            };
+            
+            const options = {
+                numPillars: parseInt(document.getElementById('numPillars').value),
+                kiteMaterial: document.getElementById('kiteMaterial').value,
+                numKites: parseInt(document.getElementById('numKites').value),
+                maxIterations: 500
+            };
+            
+            designBtn.disabled = true;
+            loading.classList.add('active');
+            status.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/design', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ location, constraints, options })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                // Display results
+                status.style.display = 'block';
+                status.className = 'status success';
+                statusText.innerHTML = `
+                    <strong>Design Complete!</strong><br>
+                    Optimized ${result.pillars.length} pillars<br>
+                    Designed ${result.kites.length} kites<br>
+                    Wind: ${result.windData.averageSpeed.toFixed(2)} m/s @ ${result.windData.averageDirection.toFixed(1)}°<br>
+                    Elevation: ${result.terrain.elevation.toFixed(1)}m
+                `;
+                
+                // Draw simple visualization (2D top-down view)
+                drawVisualization(result.pillars, result.flowField, result.kites, constraints.buildArea);
+                
+            } catch (error) {
+                status.style.display = 'block';
+                status.className = 'status error';
+                statusText.textContent = `Error: ${error.message}`;
+            } finally {
+                designBtn.disabled = false;
+                loading.classList.remove('active');
+            }
+        });
+        
+        function drawVisualization(pillars, flowField, kites, buildArea) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Scale factors
+            const scaleX = canvas.width / buildArea.width;
+            const scaleY = canvas.height / buildArea.height;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            // Draw flow field (simplified)
+            const sampleRate = Math.max(1, Math.floor(flowField.vectors.length / 500));
+            for (let i = 0; i < flowField.vectors.length; i += sampleRate) {
+                const point = flowField.points[i];
+                const vector = flowField.vectors[i];
+                const x = centerX + point.x * scaleX;
+                const y = centerY + point.z * scaleY;
+                
+                const speed = Math.sqrt(vector.x ** 2 + vector.y ** 2 + vector.z ** 2);
+                const alpha = Math.min(1, speed / 10);
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(100, 150, 255, ${alpha * 0.3})`;
+                ctx.fill();
+            }
+            
+            // Draw pillars
+            ctx.fillStyle = '#8B7355';
+            ctx.strokeStyle = '#5a4a35';
+            ctx.lineWidth = 2;
+            
+            for (const pillar of pillars) {
+                const x = centerX + pillar.position.x * scaleX;
+                const y = centerY + pillar.position.z * scaleY;
+                const radius = pillar.radius * scaleX;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Draw cog teeth (simplified)
+                const teeth = pillar.cogTeeth;
+                for (let i = 0; i < teeth; i++) {
+                    const angle = (i / teeth) * Math.PI * 2 + pillar.rotation;
+                    const outerRadius = radius * 1.2;
+                    const toothX = x + Math.cos(angle) * outerRadius;
+                    const toothY = y + Math.sin(angle) * outerRadius;
+                    
+                    ctx.beginPath();
+                    ctx.arc(toothX, toothY, radius * 0.15, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            // Draw kites (simplified as small diamonds)
+            for (const kite of kites) {
+                const attachment = kite.attachmentPoints[0];
+                if (attachment) {
+                    const x = centerX + attachment.x * scaleX;
+                    const y = centerY + attachment.z * scaleY;
+                    
+                    ctx.fillStyle = kite.color || '#ff6b6b';
+                    ctx.beginPath();
+                    ctx.moveTo(x, y - 5);
+                    ctx.lineTo(x + 5, y);
+                    ctx.lineTo(x, y + 5);
+                    ctx.lineTo(x - 5, y);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
+

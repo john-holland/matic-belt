@@ -75,13 +75,13 @@ async function main() {
     console.log(`  Overall Improvement: ${optimized.result.enhancementFactor.overallImprovement}`);
     
     console.log(`\nRecommendations:`);
-    optimized.result.fertilityAssessment.recommendations.forEach((rec, i) => {
+    optimized.result.fertilityAssessment.recommendations.forEach((rec: string, i: number) => {
       console.log(`  ${i + 1}. ${rec}`);
     });
     
     if (optimized.result.fertilityAssessment.limitations.length > 0) {
       console.log(`\nLimitations:`);
-      optimized.result.fertilityAssessment.limitations.forEach((lim, i) => {
+      optimized.result.fertilityAssessment.limitations.forEach((lim: string, i: number) => {
         console.log(`  ${i + 1}. ${lim}`);
       });
     }

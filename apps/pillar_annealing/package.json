@@ -10,7 +10,8 @@
     "dev": "npm run build && npm start",
     "serve": "node dist/server.js",
     "example": "npm run build && node dist/example.js",
-    "fertility-example": "npm run build && node dist/fertility-example.js"
+    "fertility-example": "npm run build && node dist/fertility-example.js",
+    "cubic-kite": "npm run build && node dist/cubic-kite-pillars.js"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.15.0",

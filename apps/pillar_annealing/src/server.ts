@@ -6,6 +6,7 @@ import express from 'express';
 import path from 'path';
 import { PillarDesignFramework } from './index';
 import { Location, DesignConstraints } from './types';
+import { WindFarmSite } from './wind-farm/optimizer';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -138,6 +139,68 @@ app.post('/api/optimize-fertility', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Error in /api/optimize-fertility:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/wind-farm/search
+ * Search for optimal wind farm locations
+ */
+app.post('/api/wind-farm/search', async (req, res) => {
+  try {
+    const { centerLocation, searchRadius, gridResolution, minWindSpeed, minAreaSize, farmType, targetPowerOutput } = req.body;
+    
+    if (!centerLocation || !farmType) {
+      return res.status(400).json({ error: 'Missing required parameters: centerLocation, farmType' });
+    }
+    
+    if (farmType !== 'kite' && farmType !== 'propeller') {
+      return res.status(400).json({ error: 'farmType must be "kite" or "propeller"' });
+    }
+    
+    const result = await framework.findOptimalWindFarmSites({
+      centerLocation: centerLocation as Location,
+      searchRadius: searchRadius || 10000, // 10km default
+      gridResolution: gridResolution || 20,
+      minWindSpeed: minWindSpeed || 4,
+      minAreaSize: minAreaSize || 10000,
+      farmType: farmType as 'kite' | 'propeller',
+      targetPowerOutput
+    });
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error in /api/wind-farm/search:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/wind-farm/design
+ * Design pillars for a specific wind farm site
+ */
+app.post('/api/wind-farm/design', async (req, res) => {
+  try {
+    const { site, farmType, constraints } = req.body;
+    
+    if (!site || !farmType) {
+      return res.status(400).json({ error: 'Missing required parameters: site, farmType' });
+    }
+    
+    if (farmType !== 'kite' && farmType !== 'propeller') {
+      return res.status(400).json({ error: 'farmType must be "kite" or "propeller"' });
+    }
+    
+    const result = await framework.designPillarsForWindFarm(
+      site as WindFarmSite,
+      farmType as 'kite' | 'propeller',
+      constraints
+    );
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error in /api/wind-farm/design:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });

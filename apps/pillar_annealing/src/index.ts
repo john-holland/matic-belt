@@ -19,6 +19,7 @@ import {
   MicroclimateResult
 } from './types';
 import { MicroclimateDesigner } from './microclimate-designer';
+import { WindFarmOptimizer, WindFarmSearchOptions, WindFarmOptimizationResult, WindFarmSite } from './wind-farm/optimizer';
 
 export class PillarDesignFramework {
   private maps: GoogleMaps3D;
@@ -27,6 +28,7 @@ export class PillarDesignFramework {
   private kiteDesigner: KiteDesigner;
   private annealer: PillarAnnealer | null = null;
   private microclimateDesigner: MicroclimateDesigner;
+  private windFarmOptimizer: WindFarmOptimizer;
   
   constructor(googleMapsApiKey: string) {
     this.maps = new GoogleMaps3D({ apiKey: googleMapsApiKey });
@@ -34,6 +36,7 @@ export class PillarDesignFramework {
     this.flowPredictor = new FlowPredictor();
     this.kiteDesigner = new KiteDesigner();
     this.microclimateDesigner = new MicroclimateDesigner(googleMapsApiKey);
+    this.windFarmOptimizer = new WindFarmOptimizer(googleMapsApiKey);
   }
   
   /**
@@ -261,6 +264,34 @@ export class PillarDesignFramework {
       structureCount,
       structureType,
       targetArea,
+      constraints
+    );
+  }
+  
+  /**
+   * Search for optimal wind farm locations
+   */
+  async findOptimalWindFarmSites(
+    options: WindFarmSearchOptions
+  ): Promise<WindFarmOptimizationResult> {
+    return await this.windFarmOptimizer.findOptimalWindFarmSites(options);
+  }
+  
+  /**
+   * Design pillars for a specific wind farm site
+   */
+  async designPillarsForWindFarm(
+    site: WindFarmSite,
+    farmType: 'kite' | 'propeller',
+    constraints?: Partial<DesignConstraints>
+  ): Promise<{
+    pillars: PillarConfig[];
+    flowField: FlowField;
+    optimizationNotes: string[];
+  }> {
+    return await this.windFarmOptimizer.designPillarsForWindFarm(
+      site,
+      farmType,
       constraints
     );
   }

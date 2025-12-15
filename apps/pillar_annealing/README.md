@@ -14,6 +14,8 @@ An LSTM annealing framework for designing cog-shaped pillars inspired by ancient
 - **⛰️ Orographic Lift Modeling**: Models how mountains/kites force air upward, causing cooling and precipitation
 - **🌱 Fertility Enhancement**: Calculates how structures enhance humidity, soil moisture, and agricultural viability
 - **Microclimate Design**: Designs structures to create more humid and fertile land in arid regions
+- **⚡ Wind Farm Optimizer**: Finds optimal locations for kite-based and propeller-based wind farms
+- **📍 Site Search**: Grid-based search for optimal wind farm sites with comprehensive scoring
 
 ## Architecture
 
@@ -65,12 +67,19 @@ An LSTM annealing framework for designing cog-shaped pillars inspired by ancient
     - Optimizes placement for maximum humidity/precipitation
     - Integrates all microclimate components
 
-11. **Main Framework** (`src/index.ts`)
+11. **Wind Farm Optimizer** (`src/wind-farm/optimizer.ts`)
+    - Searches for optimal wind farm locations
+    - Supports kite-based and propeller-based wind farms
+    - Calculates site scores based on wind, terrain, accessibility
+    - Estimates power output and recommends pillar configurations
+    - Designs pillar arrangements for selected sites
+
+12. **Main Framework** (`src/index.ts`)
     - Orchestrates the design workflow
     - Ties all components together
-    - Provides fertility enhancement APIs
+    - Provides fertility enhancement and wind farm APIs
 
-12. **Web Server & UI** (`src/server.ts`, `public/index.html`)
+13. **Web Server & UI** (`src/server.ts`, `public/index.html`)
     - Express server with REST API
     - Web interface for interactive design
 
@@ -203,6 +212,48 @@ Content-Type: application/json
 }
 ```
 
+#### Search for Wind Farm Sites
+
+```bash
+POST /api/wind-farm/search
+Content-Type: application/json
+
+{
+  "centerLocation": {
+    "lat": 47.5515,
+    "lng": -101.0020
+  },
+  "searchRadius": 20000,
+  "gridResolution": 20,
+  "minWindSpeed": 5,
+  "minAreaSize": 50000,
+  "farmType": "kite",
+  "targetPowerOutput": 50
+}
+```
+
+#### Design Pillars for Wind Farm Site
+
+```bash
+POST /api/wind-farm/design
+Content-Type: application/json
+
+{
+  "site": {
+    "location": { "lat": 47.5515, "lng": -101.0020 },
+    "score": 0.85,
+    "metrics": { ... },
+    "recommendedPillarCount": 10,
+    "recommendedSpacing": 150
+  },
+  "farmType": "kite",
+  "constraints": {
+    "minPillarHeight": 5,
+    "maxPillarHeight": 15
+  }
+}
+```
+
 ### Programmatic Usage
 
 #### Standard Pillar Design
@@ -253,6 +304,33 @@ const fertilityResult = await framework.optimizeForFertility(
 console.log(`Fertility improvement: ${fertilityResult.result.enhancementFactor.overallImprovement}`);
 console.log(`Humidity enhancement: ${fertilityResult.result.humidityEnhancement.enhancementFactor.toFixed(2)}x`);
 console.log(`Overall fertility: ${(fertilityResult.result.fertilityAssessment.overallFertility * 100).toFixed(1)}%`);
+```
+
+#### Wind Farm Site Search
+
+```typescript
+// Search for optimal kite-based wind farm locations
+const kiteResult = await framework.findOptimalWindFarmSites({
+  centerLocation: { lat: 47.5515, lng: -101.0020 }, // North Dakota
+  searchRadius: 20000, // 20km radius
+  gridResolution: 20, // 20x20 grid = 400 locations
+  minWindSpeed: 5, // m/s
+  minAreaSize: 50000, // 5 hectares
+  farmType: 'kite',
+  targetPowerOutput: 50 // MW
+});
+
+console.log(`Found ${kiteResult.topSites.length} optimal sites`);
+console.log(`Best site: ${kiteResult.analysis.bestSite.location.lat}, ${kiteResult.analysis.bestSite.location.lng}`);
+console.log(`Estimated power: ${kiteResult.analysis.bestSite.metrics.estimatedPowerOutput} MW`);
+
+// Design pillars for the best site
+const pillarDesign = await framework.designPillarsForWindFarm(
+  kiteResult.analysis.bestSite,
+  'kite'
+);
+
+console.log(`Designed ${pillarDesign.pillars.length} supporting pillars`);
 ```
 
 ## Design Process

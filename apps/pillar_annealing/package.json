@@ -11,7 +11,8 @@
     "serve": "node dist/server.js",
     "example": "npm run build && node dist/example.js",
     "fertility-example": "npm run build && node dist/fertility-example.js",
-    "cubic-kite": "npm run build && node dist/cubic-kite-pillars.js"
+    "cubic-kite": "npm run build && node dist/cubic-kite-pillars.js",
+    "wind-farm": "npm run build && node dist/wind-farm-example.js"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.15.0",

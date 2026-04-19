@@ -12,7 +12,7 @@ interface MaterialComposition {
     stability: number;
 }
 
-interface CameraData {
+export interface CameraData {
     resolution: string;
     frameRate: number;
     quantumSensitivity: number;

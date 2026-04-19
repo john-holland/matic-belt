@@ -3,6 +3,11 @@ import { StarSystem } from './star-system';
 import { MolecularAnalyzer } from './molecular-analyzer';
 import { SpectrographicAnalyzer } from './spectrographic-analyzer';
 import { StabilityZoneAnalyzer, EnvironmentalData } from './stability-zone-analyzer';
+import { runQuantumPython } from './quantum-python-runner';
+import {
+    transmutationRadiationBudget_uSvH,
+    type TransmutationRadiationBudget
+} from './transmutation-radiation-budget';
 
 // Known life-sustaining elements
 const LIFE_ELEMENTS = ['C', 'H', 'N', 'O', 'P', 'S'];
@@ -41,6 +46,25 @@ const LAPTOP_SPECS = {
         quantumSensitivity: 0.95
     }
 };
+
+export interface TofuAnchoredConvertParams {
+    target: 'fruit' | 'meat';
+    tofuItem: string;
+    gps: {
+        lat: number;
+        lon: number;
+        alt_m: number;
+        body: 'earth' | 'mars' | 'custom';
+        planetRadius_m?: number;
+    };
+    /** ENU offset (m) from GPS reference to point behind laptop. */
+    laptopBehindOffsetEnu_m: { east_m: number; north_m: number; up_m: number };
+    sensorOffsetEnu_m: { east_m: number; north_m: number; up_m: number };
+    dishElementalMassFraction?: Record<string, number>;
+    tunnelingProbability?: number;
+    /** Simulated ambient dose rate before the process (μSv/h); defaults to Earth toy baseline. */
+    ambientRadiation_uSv_h?: number;
+}
 
 interface QuantumFoodState {
     foodItem: string;
@@ -381,6 +405,144 @@ export class QuantumFoodTeleporter {
     /**
      * Convert tofu to beef using quantum teleportation
      */
+    /**
+     * Local-frame tofu conversion using GPS + ENU offsets (simulation).
+     */
+    async convertTofuWithAnchors(params: TofuAnchoredConvertParams): Promise<{
+        success: boolean;
+        message: string;
+        nutritionalContent: any;
+        geometry?: { laptopEcef_m: number[]; sensorEcef_m: number[]; separation_m: number };
+        radiationBudget?: TransmutationRadiationBudget;
+    }> {
+        const targetFood = params.target === 'meat' ? 'beef' : 'fruit';
+        this.displayStarTrekOutput(
+            `Anchored tofu→${targetFood} sequence (GPS ${params.gps.lat.toFixed(5)},${params.gps.lon.toFixed(5)})...`
+        );
+
+        const lat = params.gps.lat;
+        const lon = params.gps.lon;
+        const alt = params.gps.alt_m;
+        const body = params.gps.body;
+        const pr = params.gps.planetRadius_m;
+
+        const laptop = await runQuantumPython<{ ecef_m: number[] }>({
+            op: 'ecef_with_offset',
+            lat,
+            lon,
+            alt_m: alt,
+            body,
+            planetRadius_m: pr,
+            offsetEnu_m: params.laptopBehindOffsetEnu_m
+        });
+        const sensor = await runQuantumPython<{ ecef_m: number[] }>({
+            op: 'ecef_with_offset',
+            lat,
+            lon,
+            alt_m: alt,
+            body,
+            planetRadius_m: pr,
+            offsetEnu_m: params.sensorOffsetEnu_m
+        });
+        if (!laptop.ok || !sensor.ok || !laptop.result || !sensor.result) {
+            return {
+                success: false,
+                message: laptop.error || sensor.error || 'geodesy sidecar failed',
+                nutritionalContent: null
+            };
+        }
+        const sep = await runQuantumPython<{ distance_m: number }>({
+            op: 'distance_m',
+            ecef_a_m: laptop.result.ecef_m,
+            ecef_b_m: sensor.result.ecef_m
+        });
+        const separation_m = sep.ok && sep.result ? sep.result.distance_m : 0;
+
+        const tunnelingForRadiation = params.tunnelingProbability ?? 0.65;
+        const radiationBudget = () =>
+            transmutationRadiationBudget_uSvH({
+                ambientRadiation_uSv_h: params.ambientRadiation_uSv_h,
+                separation_m,
+                tunnelingProbability: tunnelingForRadiation
+            });
+
+        const compatibility = await this.calculateCompatibility(params.tofuItem, targetFood);
+        if (compatibility < 0.45) {
+            return {
+                success: false,
+                message: 'Quantum compatibility too low for anchored conversion',
+                nutritionalContent: null,
+                geometry: {
+                    laptopEcef_m: laptop.result.ecef_m,
+                    sensorEcef_m: sensor.result.ecef_m,
+                    separation_m
+                },
+                radiationBudget: radiationBudget()
+            };
+        }
+
+        const enhancers = ['salt', 'shoyu'];
+        const activated = await this.activateLocalMatter(params.tofuItem, enhancers);
+        if (!activated) {
+            return {
+                success: false,
+                message: 'Matter activation failed',
+                nutritionalContent: null,
+                geometry: {
+                    laptopEcef_m: laptop.result.ecef_m,
+                    sensorEcef_m: sensor.result.ecef_m,
+                    separation_m
+                },
+                radiationBudget: radiationBudget()
+            };
+        }
+
+        const tprob = params.tunnelingProbability ?? 0.65;
+        const targetEnergy = 0.55 + 0.35 * Math.min(1, Math.max(0, tprob));
+        const result = await this.annealer.anneal({
+            initialState: this.currentState,
+            targetEnergy,
+            maxIterations: 800,
+            temperature: 0.12
+        });
+
+        if (!result.success) {
+            return {
+                success: false,
+                message: 'Quantum annealing did not converge for anchored conversion',
+                nutritionalContent: null,
+                geometry: {
+                    laptopEcef_m: laptop.result.ecef_m,
+                    sensorEcef_m: sensor.result.ecef_m,
+                    separation_m
+                },
+                radiationBudget: transmutationRadiationBudget_uSvH({
+                    ambientRadiation_uSv_h: params.ambientRadiation_uSv_h,
+                    separation_m,
+                    tunnelingProbability: tprob
+                })
+            };
+        }
+
+        const nutrition = await this.molecularAnalyzer.analyzeNutrition(targetFood);
+        this.displayStarTrekOutput(`Anchored conversion complete. Dish profile keys: ${Object.keys(params.dishElementalMassFraction || {}).length}`);
+        return {
+            success: true,
+            message: `Anchored tofu→${targetFood} (simulation)`,
+            nutritionalContent: nutrition,
+            geometry: {
+                laptopEcef_m: laptop.result.ecef_m,
+                sensorEcef_m: sensor.result.ecef_m,
+                separation_m
+            },
+            radiationBudget: transmutationRadiationBudget_uSvH({
+                ambientRadiation_uSv_h: params.ambientRadiation_uSv_h,
+                separation_m,
+                tunnelingProbability: tprob
+            })
+        };
+    }
+
     async convertTofuToBeef(tofuItem: string): Promise<{
         success: boolean;
         message: string;

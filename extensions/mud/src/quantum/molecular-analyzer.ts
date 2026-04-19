@@ -92,6 +92,8 @@ export class MolecularAnalyzer {
             return ['C', 'H', 'N', 'O', 'P', 'S'];
         } else if (foodItem.toLowerCase().includes('beef')) {
             return ['C', 'H', 'N', 'O', 'P', 'S', 'Fe'];
+        } else if (foodItem.toLowerCase().includes('fruit')) {
+            return ['C', 'H', 'O', 'K', 'N'];
         } else if (foodItem.toLowerCase().includes('fish')) {
             return ['C', 'H', 'N', 'O', 'P', 'S', 'Na', 'K'];
         }
@@ -114,7 +116,7 @@ export class MolecularAnalyzer {
         }, 0);
     }
 
-    private determineQuantumState(foodItem: string): string {
+    private determineQuantumState(_foodItem: string): string {
         // This would normally use quantum sensors
         // For now, return a random quantum state
         const states = Array.from(this.QUANTUM_STATES);
@@ -125,6 +127,7 @@ export class MolecularAnalyzer {
         // Example protein content in grams per 100g
         if (foodItem.toLowerCase().includes('tofu')) return 8;
         if (foodItem.toLowerCase().includes('beef')) return 26;
+        if (foodItem.toLowerCase().includes('fruit')) return 1;
         if (foodItem.toLowerCase().includes('fish')) return 20;
         return 0;
     }
@@ -133,6 +136,7 @@ export class MolecularAnalyzer {
         // Example fat content in grams per 100g
         if (foodItem.toLowerCase().includes('tofu')) return 5;
         if (foodItem.toLowerCase().includes('beef')) return 15;
+        if (foodItem.toLowerCase().includes('fruit')) return 0;
         if (foodItem.toLowerCase().includes('fish')) return 10;
         return 0;
     }
@@ -141,6 +145,7 @@ export class MolecularAnalyzer {
         // Example carbohydrate content in grams per 100g
         if (foodItem.toLowerCase().includes('tofu')) return 2;
         if (foodItem.toLowerCase().includes('beef')) return 0;
+        if (foodItem.toLowerCase().includes('fruit')) return 14;
         if (foodItem.toLowerCase().includes('fish')) return 0;
         return 0;
     }
@@ -149,6 +154,7 @@ export class MolecularAnalyzer {
         // Example minerals
         if (foodItem.toLowerCase().includes('tofu')) return ['Ca', 'Fe', 'Mg'];
         if (foodItem.toLowerCase().includes('beef')) return ['Fe', 'Zn', 'P'];
+        if (foodItem.toLowerCase().includes('fruit')) return ['K', 'Mg', 'Ca'];
         if (foodItem.toLowerCase().includes('fish')) return ['Ca', 'P', 'I'];
         return [];
     }
@@ -157,6 +163,7 @@ export class MolecularAnalyzer {
         // Example vitamins
         if (foodItem.toLowerCase().includes('tofu')) return ['B1', 'B2', 'B6'];
         if (foodItem.toLowerCase().includes('beef')) return ['B12', 'B6', 'B3'];
+        if (foodItem.toLowerCase().includes('fruit')) return ['C', 'A', 'K'];
         if (foodItem.toLowerCase().includes('fish')) return ['D', 'B12', 'A'];
         return [];
     }

@@ -11,6 +11,29 @@ A Multi-User Dungeon server with AI integration, GitHub connectivity, and browse
 - Credit system for AI interactions
 - Friends list for AI models
 
+## Quantum API (simulation)
+
+HTTP routes under `/api/quantum/*` provide GPS-aware **zones**, **toy tunneling summaries**, **soil enrichment simulation**, **tofu→fruit/meat** anchored conversions, **household-vs-spectrum** NNLS fitting, and a **stable-element one-mole table** (`GET /api/quantum/elements/stable`). All responses include `simulation: true` where applicable.
+
+**Environment**
+
+- `OPENAI_API_KEY` — optional; enables LLM-assisted zone camera enrichment when `useLlmForCamera` is true on zone create.
+- `OPENAI_ZONE_MODEL` — optional override (default `gpt-4o-mini`).
+- `QUANTUM_PYTHON_BIN` — Python interpreter (default `python3`).
+- `QUANTUM_PYTHON_CLI` — override path to `python/quantum_geo/cli.py` if not default.
+- `QUANTUM_DEV_OVERRIDE=1` — allows `?devOverride=1` to bypass `fieldStabilization` gating (development only).
+
+**Python sidecar**
+
+```bash
+pip install -r python/quantum_geo/requirements.txt
+bash scripts/verify-quantum-python.sh
+```
+
+**Science and risks**
+
+See [docs/quantum-transmutation-science-remarks.md](docs/quantum-transmutation-science-remarks.md).
+
 ## Setup
 
 1. Install dependencies:

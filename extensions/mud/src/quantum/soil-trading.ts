@@ -38,7 +38,7 @@ interface SoilComposition {
   cells: CellData[];
 }
 
-interface SoilTradeConfig {
+export interface SoilTradeConfig {
   source: {
     location: {
       latitude: number;
@@ -72,6 +72,10 @@ export class SoilTrader {
   constructor() {
     this.quantumAnnealer = new QuantumAnnealer();
     this.spectrographicAnalyzer = new SpectrographicAnalyzer();
+  }
+
+  public setTradeConfig(config: SoilTradeConfig): void {
+    this.currentTrade = config;
   }
 
   public async analyzeSoil(config: SoilTradeConfig): Promise<{

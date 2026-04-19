@@ -17,6 +17,7 @@ import { HistoryManager } from './history-manager';
 import { WiFiManagerWDUtil } from './wifi-wdutil';
 import { TokenTracker } from './token-tracker';
 import { loadApiKeysFromFile, getApiKey } from './api-key-loader';
+import { createQuantumRouter } from './quantum/quantum-routes';
 import * as path from 'path';
 
 interface AIUser {
@@ -688,6 +689,14 @@ class MUDServer {
     private setupRoutes() {
         // Serve static files from public directory
         this.app.use(express.static(path.join(__dirname, '../public')));
+        this.app.use(express.json({ limit: '2mb' }));
+
+        this.app.use(
+            '/api/quantum',
+            createQuantumRouter({
+                openai: this.openai
+            })
+        );
 
         this.app.get('/health', (_req: Request, res: Response) => {
             res.json({ status: 'ok' });

@@ -64,6 +64,14 @@ export interface TofuAnchoredConvertParams {
     tunnelingProbability?: number;
     /** Simulated ambient dose rate before the process (μSv/h); defaults to Earth toy baseline. */
     ambientRadiation_uSv_h?: number;
+    /**
+     * When set (e.g. router pre-computed geometry for BEC pre-check), skips Python geodesy in this call.
+     */
+    precomputedGeometry?: {
+        separation_m: number;
+        laptopEcef_m: number[];
+        sensorEcef_m: number[];
+    };
 }
 
 interface QuantumFoodState {
@@ -406,20 +414,19 @@ export class QuantumFoodTeleporter {
      * Convert tofu to beef using quantum teleportation
      */
     /**
-     * Local-frame tofu conversion using GPS + ENU offsets (simulation).
+     * Laptop–sensor separation and ECEF anchors via quantum_geo (for BEC pre-check or standalone probes).
      */
-    async convertTofuWithAnchors(params: TofuAnchoredConvertParams): Promise<{
-        success: boolean;
-        message: string;
-        nutritionalContent: any;
-        geometry?: { laptopEcef_m: number[]; sensorEcef_m: number[]; separation_m: number };
-        radiationBudget?: TransmutationRadiationBudget;
-    }> {
-        const targetFood = params.target === 'meat' ? 'beef' : 'fruit';
-        this.displayStarTrekOutput(
-            `Anchored tofu→${targetFood} sequence (GPS ${params.gps.lat.toFixed(5)},${params.gps.lon.toFixed(5)})...`
-        );
-
+    async measureAnchoredSeparation(
+        params: Pick<TofuAnchoredConvertParams, 'gps' | 'laptopBehindOffsetEnu_m' | 'sensorOffsetEnu_m'>
+    ): Promise<
+        | { ok: false; message: string }
+        | {
+              ok: true;
+              separation_m: number;
+              laptopEcef_m: number[];
+              sensorEcef_m: number[];
+          }
+    > {
         const lat = params.gps.lat;
         const lon = params.gps.lon;
         const alt = params.gps.alt_m;
@@ -446,9 +453,8 @@ export class QuantumFoodTeleporter {
         });
         if (!laptop.ok || !sensor.ok || !laptop.result || !sensor.result) {
             return {
-                success: false,
-                message: laptop.error || sensor.error || 'geodesy sidecar failed',
-                nutritionalContent: null
+                ok: false,
+                message: laptop.error || sensor.error || 'geodesy sidecar failed'
             };
         }
         const sep = await runQuantumPython<{ distance_m: number }>({
@@ -457,6 +463,59 @@ export class QuantumFoodTeleporter {
             ecef_b_m: sensor.result.ecef_m
         });
         const separation_m = sep.ok && sep.result ? sep.result.distance_m : 0;
+        return {
+            ok: true,
+            separation_m,
+            laptopEcef_m: laptop.result.ecef_m,
+            sensorEcef_m: sensor.result.ecef_m
+        };
+    }
+
+    private async resolveAnchoredGeometry(params: TofuAnchoredConvertParams): Promise<
+        | { ok: false; message: string }
+        | {
+              ok: true;
+              separation_m: number;
+              laptopEcef_m: number[];
+              sensorEcef_m: number[];
+          }
+    > {
+        if (params.precomputedGeometry) {
+            const p = params.precomputedGeometry;
+            return {
+                ok: true,
+                separation_m: p.separation_m,
+                laptopEcef_m: [...p.laptopEcef_m],
+                sensorEcef_m: [...p.sensorEcef_m]
+            };
+        }
+        return this.measureAnchoredSeparation(params);
+    }
+
+    /**
+     * Local-frame tofu conversion using GPS + ENU offsets (simulation).
+     */
+    async convertTofuWithAnchors(params: TofuAnchoredConvertParams): Promise<{
+        success: boolean;
+        message: string;
+        nutritionalContent: any;
+        geometry?: { laptopEcef_m: number[]; sensorEcef_m: number[]; separation_m: number };
+        radiationBudget?: TransmutationRadiationBudget;
+    }> {
+        const targetFood = params.target === 'meat' ? 'beef' : 'fruit';
+        this.displayStarTrekOutput(
+            `Anchored tofu→${targetFood} sequence (GPS ${params.gps.lat.toFixed(5)},${params.gps.lon.toFixed(5)})...`
+        );
+
+        const geo = await this.resolveAnchoredGeometry(params);
+        if (!geo.ok) {
+            return {
+                success: false,
+                message: geo.message,
+                nutritionalContent: null
+            };
+        }
+        const { separation_m, laptopEcef_m, sensorEcef_m } = geo;
 
         const tunnelingForRadiation = params.tunnelingProbability ?? 0.65;
         const radiationBudget = () =>
@@ -473,8 +532,8 @@ export class QuantumFoodTeleporter {
                 message: 'Quantum compatibility too low for anchored conversion',
                 nutritionalContent: null,
                 geometry: {
-                    laptopEcef_m: laptop.result.ecef_m,
-                    sensorEcef_m: sensor.result.ecef_m,
+                    laptopEcef_m,
+                    sensorEcef_m,
                     separation_m
                 },
                 radiationBudget: radiationBudget()
@@ -489,8 +548,8 @@ export class QuantumFoodTeleporter {
                 message: 'Matter activation failed',
                 nutritionalContent: null,
                 geometry: {
-                    laptopEcef_m: laptop.result.ecef_m,
-                    sensorEcef_m: sensor.result.ecef_m,
+                    laptopEcef_m,
+                    sensorEcef_m,
                     separation_m
                 },
                 radiationBudget: radiationBudget()
@@ -512,8 +571,8 @@ export class QuantumFoodTeleporter {
                 message: 'Quantum annealing did not converge for anchored conversion',
                 nutritionalContent: null,
                 geometry: {
-                    laptopEcef_m: laptop.result.ecef_m,
-                    sensorEcef_m: sensor.result.ecef_m,
+                    laptopEcef_m,
+                    sensorEcef_m,
                     separation_m
                 },
                 radiationBudget: transmutationRadiationBudget_uSvH({
@@ -531,8 +590,8 @@ export class QuantumFoodTeleporter {
             message: `Anchored tofu→${targetFood} (simulation)`,
             nutritionalContent: nutrition,
             geometry: {
-                laptopEcef_m: laptop.result.ecef_m,
-                sensorEcef_m: sensor.result.ecef_m,
+                laptopEcef_m,
+                sensorEcef_m,
                 separation_m
             },
             radiationBudget: transmutationRadiationBudget_uSvH({

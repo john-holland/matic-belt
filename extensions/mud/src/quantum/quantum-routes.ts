@@ -21,6 +21,7 @@ import {
     zoneToJsonSafe,
     type EntangledBECZone
 } from './ger-bec-ring-toy';
+import { computeFoodTeleportBecCost, precheckBecFundingForFoodTeleport } from './ger-bec-food-power';
 
 export interface QuantumRouterDeps {
     openai: OpenAI | null;
@@ -286,7 +287,8 @@ export function createQuantumRouter(deps: QuantumRouterDeps): QuantumRouterBundl
             laptopBehindOffsetEnu_m,
             sensorOffsetEnu_m,
             tunnelingProbability,
-            ambientRadiation_uSv_h
+            ambientRadiation_uSv_h,
+            becZoneId: becZoneIdRaw
         } = req.body || {};
         if (!target || !['fruit', 'meat'].includes(target)) {
             res.status(400).json({ error: 'target must be fruit|meat' });
@@ -312,16 +314,68 @@ export function createQuantumRouter(deps: QuantumRouterDeps): QuantumRouterBundl
         const laptopBehind = laptopBehindOffsetEnu_m || { east_m: -0.35, north_m: 0, up_m: 0 };
         const sensor = sensorOffsetEnu_m || { east_m: 0.1, north_m: 0.2, up_m: 0.05 };
 
+        const gpsPayload = {
+            lat: Number(gps.lat),
+            lon: Number(gps.lon),
+            alt_m: Number(gps.alt_m ?? 0),
+            body: gps.body || 'earth',
+            planetRadius_m: gps.planetRadius_m
+        } as const;
+
+        const tprob =
+            tunnelingProbability === undefined || tunnelingProbability === null
+                ? 0.65
+                : Number(tunnelingProbability);
+
+        const becZoneId =
+            becZoneIdRaw !== undefined && becZoneIdRaw !== null && String(becZoneIdRaw).trim() !== ''
+                ? String(becZoneIdRaw)
+                : undefined;
+
+        let precomputedGeometry:
+            | {
+                  separation_m: number;
+                  laptopEcef_m: number[];
+                  sensorEcef_m: number[];
+              }
+            | undefined;
+        let becCost: bigint | undefined;
+
+        if (becZoneId) {
+            const geoProbe = await foodTeleporter.measureAnchoredSeparation({
+                gps: gpsPayload,
+                laptopBehindOffsetEnu_m: laptopBehind,
+                sensorOffsetEnu_m: sensor
+            });
+            if (!geoProbe.ok) {
+                res.status(502).json({
+                    error: geoProbe.message,
+                    simulation: true,
+                    becZoneId
+                });
+                return;
+            }
+            becCost = computeFoodTeleportBecCost({
+                separation_m: geoProbe.separation_m,
+                tunnelingProbability: Number.isFinite(tprob) ? Math.min(1, Math.max(0, tprob)) : 0.65,
+                target: target as 'fruit' | 'meat'
+            });
+            const pre = precheckBecFundingForFoodTeleport(becZoneId, gerBec.getZone(becZoneId), becCost);
+            if (!pre.ok) {
+                res.status(pre.status).json(pre.body);
+                return;
+            }
+            precomputedGeometry = {
+                separation_m: geoProbe.separation_m,
+                laptopEcef_m: geoProbe.laptopEcef_m,
+                sensorEcef_m: geoProbe.sensorEcef_m
+            };
+        }
+
         const out = await foodTeleporter.convertTofuWithAnchors({
             target,
             tofuItem: tofuItem || 'tofu',
-            gps: {
-                lat: Number(gps.lat),
-                lon: Number(gps.lon),
-                alt_m: Number(gps.alt_m ?? 0),
-                body: gps.body || 'earth',
-                planetRadius_m: gps.planetRadius_m
-            },
+            gps: gpsPayload,
             laptopBehindOffsetEnu_m: laptopBehind,
             sensorOffsetEnu_m: sensor,
             dishElementalMassFraction: req.body.dishElementalMassFraction,
@@ -329,13 +383,31 @@ export function createQuantumRouter(deps: QuantumRouterDeps): QuantumRouterBundl
             ambientRadiation_uSv_h:
                 ambientRadiation_uSv_h === undefined || ambientRadiation_uSv_h === null
                     ? undefined
-                    : Number(ambientRadiation_uSv_h)
+                    : Number(ambientRadiation_uSv_h),
+            precomputedGeometry
         });
+
+        if (becZoneId && out.success && becCost !== undefined) {
+            // In-memory toy only: another request could theoretically drain the ring between pre-check and debit.
+            await gerBec.triggerDischarge(becZoneId, Number(becCost));
+        }
+
+        const becFunding =
+            becZoneId && becCost !== undefined
+                ? {
+                      zoneId: becZoneId,
+                      requiredCost: becCost.toString(),
+                      debited: out.success,
+                      remainingLoad: gerBec.getZone(becZoneId)?.buffer.currentLoad.toString() ?? null,
+                      loopState: gerBec.getLoopState(becZoneId) ?? null
+                  }
+                : undefined;
 
         res.json({
             simulation: true,
             zoneId: zoneId || null,
-            ...out
+            ...out,
+            ...(becFunding ? { becFunding } : {})
         });
     });
 

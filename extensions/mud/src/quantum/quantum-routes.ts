@@ -4,21 +4,42 @@ import { QuantumZoneService } from './quantum-zone-service';
 import type { CreateQuantumZoneBody, TransmutationVolume } from './quantum-zone-types';
 import { HouseholdCounterSpectra } from './household-counter-spectra';
 import { SpectrographicAnalyzer } from './spectrographic-analyzer';
+import type { SpectrographicData } from './spectrographic-analyzer';
 import { TunnelingFieldApi } from './tunneling-field-api';
 import { SoilTrader, type SoilTradeConfig } from './soil-trading';
 import { QuantumFoodTeleporter } from './quantum-food-teleporter';
 import { listStableElementSymbols, STABLE_ELEMENT_ONE_MOLE_G } from './stable-element-table';
 import { runQuantumPython } from './quantum-python-runner';
+import { SpectroRunSheetStore } from './spectro-run-sheet-store';
+import { SpectralWatchdog } from './spectral-watchdog';
+import { startSpectralWatchdogCronIfEnabled } from './spectral-watchdog-cron';
+import { computeQetGammaBudget, type QetTransferRequest } from './qet-gamma-toy';
+import {
+    createGerBecRingToyController,
+    parseZoneFromBody,
+    zoneToJsonSafe,
+    type EntangledBECZone
+} from './ger-bec-ring-toy';
 
 export interface QuantumRouterDeps {
     openai: OpenAI | null;
+}
+
+export interface QuantumRouterLifecycle {
+    startSpectralWatchdogCron: () => void;
+    stopSpectralWatchdogCron: () => void;
+}
+
+export interface QuantumRouterBundle {
+    router: Router;
+    lifecycle: QuantumRouterLifecycle;
 }
 
 function devOverrideOk(req: Request): boolean {
     return req.query.devOverride === '1' && process.env.QUANTUM_DEV_OVERRIDE === '1';
 }
 
-export function createQuantumRouter(deps: QuantumRouterDeps): Router {
+export function createQuantumRouter(deps: QuantumRouterDeps): QuantumRouterBundle {
     const router = express.Router();
 
     const zoneService = new QuantumZoneService(deps.openai);
@@ -27,6 +48,30 @@ export function createQuantumRouter(deps: QuantumRouterDeps): Router {
     const tunnelingApi = new TunnelingFieldApi();
     const soilTrader = new SoilTrader();
     const foodTeleporter = new QuantumFoodTeleporter();
+    const gerBec = createGerBecRingToyController();
+
+    const spectralStore = new SpectroRunSheetStore();
+    spectralStore.loadTailFromDisk(2000);
+    const spectralWatchdog = new SpectralWatchdog(spectro, spectralStore, zoneService);
+
+    let spectralCronStop: (() => void) | null = null;
+
+    const lifecycle: QuantumRouterLifecycle = {
+        startSpectralWatchdogCron: () => {
+            if (spectralCronStop) return;
+            const { stop } = startSpectralWatchdogCronIfEnabled(spectralWatchdog);
+            spectralCronStop = stop;
+        },
+        stopSpectralWatchdogCron: () => {
+            spectralCronStop?.();
+            spectralCronStop = null;
+        }
+    };
+
+    function teleportGate(req: Request, zoneId?: string | null): { ok: true } | { ok: false; message: string } {
+        if (devOverrideOk(req)) return { ok: true };
+        return zoneService.assertTeleportationAllowed(zoneId ?? undefined);
+    }
 
     router.get('/python-status', async (_req: Request, res: Response) => {
         const ping = await runQuantumPython<{ ecef_m: number[] }>({
@@ -76,7 +121,12 @@ export function createQuantumRouter(deps: QuantumRouterDeps): Router {
             res.status(404).json({ error: 'zone not found' });
             return;
         }
-        res.json({ simulation: true, zone: z });
+        res.json({
+            simulation: true,
+            zone: z,
+            teleportHold: zoneService.getZoneTeleportationHold(req.params.id),
+            globalTeleportHold: zoneService.getGlobalTeleportationHold()
+        });
     });
 
     router.patch('/zones/:id', async (req: Request, res: Response) => {
@@ -129,6 +179,11 @@ export function createQuantumRouter(deps: QuantumRouterDeps): Router {
 
     router.post('/tunneling/volume', async (req: Request, res: Response) => {
         const { zoneId, ...rest } = req.body || {};
+        const tg = teleportGate(req, zoneId || undefined);
+        if (!tg.ok) {
+            res.status(403).json({ error: tg.message, simulation: true });
+            return;
+        }
         if (zoneId && !devOverrideOk(req)) {
             const g = zoneService.assertFieldStabilized(zoneId);
             if (!g.ok) {
@@ -161,6 +216,11 @@ export function createQuantumRouter(deps: QuantumRouterDeps): Router {
         const { zoneId, soilTrade, tunneling, tunnelingProbability } = req.body || {};
         if (!soilTrade?.source?.composition || !soilTrade?.target?.desired) {
             res.status(400).json({ error: 'soilTrade with source.composition and target.desired required' });
+            return;
+        }
+        const tg = teleportGate(req, zoneId || undefined);
+        if (!tg.ok) {
+            res.status(403).json({ error: tg.message, simulation: true });
             return;
         }
         if (zoneId && !devOverrideOk(req)) {
@@ -235,6 +295,11 @@ export function createQuantumRouter(deps: QuantumRouterDeps): Router {
             res.status(400).json({ error: 'gps with lat,lon,alt_m,body required' });
             return;
         }
+        const tg = teleportGate(req, zoneId || undefined);
+        if (!tg.ok) {
+            res.status(403).json({ error: tg.message, simulation: true });
+            return;
+        }
         if (zoneId && !devOverrideOk(req)) {
             const g = zoneService.assertFieldStabilized(zoneId);
             if (!g.ok) {
@@ -273,5 +338,231 @@ export function createQuantumRouter(deps: QuantumRouterDeps): Router {
         });
     });
 
-    return router;
+    router.post('/spectral/run', async (req: Request, res: Response) => {
+        try {
+            const { sectorId, spectrum, miningBaseline, zoneId } = req.body || {};
+            if (!sectorId || typeof sectorId !== 'string') {
+                res.status(400).json({ error: 'sectorId required' });
+                return;
+            }
+            if (!spectrum?.elements || spectrum.timestamp == null) {
+                res.status(400).json({ error: 'spectrum with timestamp, elements, intensity, wavelength required' });
+                return;
+            }
+            const data: SpectrographicData = {
+                timestamp: Number(spectrum.timestamp),
+                wavelength: Number(spectrum.wavelength ?? 500),
+                intensity: Number(spectrum.intensity ?? 0),
+                elements: spectrum.elements,
+                anomalies: spectrum.anomalies || [],
+                intensitySeries: spectrum.intensitySeries,
+                miningTag: spectrum.miningTag
+            };
+            const sheet = await spectralWatchdog.recordAndEvaluateRun({
+                sectorId,
+                data,
+                miningBaseline,
+                zoneId: zoneId ? String(zoneId) : undefined,
+                cron: false
+            });
+            res.status(201).json({ simulation: true, sheet });
+        } catch (e: any) {
+            res.status(500).json({ error: e?.message || 'spectral run failed' });
+        }
+    });
+
+    router.get('/spectral/runs', (req: Request, res: Response) => {
+        const sectorId = String(req.query.sectorId || '');
+        if (!sectorId) {
+            res.status(400).json({ error: 'sectorId query required' });
+            return;
+        }
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+        const runs = spectralWatchdog.listRecentRuns(sectorId, limit);
+        res.json({ simulation: true, sectorId, runs });
+    });
+
+    router.get('/spectral/watchdog-status', (_req: Request, res: Response) => {
+        res.json({
+            simulation: true,
+            globalTeleportHold: zoneService.getGlobalTeleportationHold(),
+            runsStorePath: spectralStore.getFilePath(),
+            lastCronBySector: spectralWatchdog.listLastCronResults()
+        });
+    });
+
+    router.post('/spectral/hold/global', (req: Request, res: Response) => {
+        const { active, reason } = req.body || {};
+        if (typeof active !== 'boolean') {
+            res.status(400).json({ error: 'active boolean required' });
+            return;
+        }
+        zoneService.setGlobalTeleportationHold(active, reason ? String(reason) : undefined);
+        res.json({ simulation: true, globalTeleportHold: zoneService.getGlobalTeleportationHold() });
+    });
+
+    router.post('/spectral/hold/zone/:id', (req: Request, res: Response) => {
+        const { active, reason } = req.body || {};
+        if (typeof active !== 'boolean') {
+            res.status(400).json({ error: 'active boolean required' });
+            return;
+        }
+        const id = req.params.id;
+        if (!zoneService.getZone(id)) {
+            res.status(404).json({ error: 'zone not found' });
+            return;
+        }
+        zoneService.setZoneTeleportationHold(id, active, reason ? String(reason) : undefined);
+        res.json({ simulation: true, zoneId: id, teleportHold: zoneService.getZoneTeleportationHold(id) });
+    });
+
+    function parseQetBody(body: unknown): QetTransferRequest | null {
+        const b = body as Record<string, unknown>;
+        if (!b?.observer || !b?.compactObject) return null;
+        const obs = b.observer as Record<string, unknown>;
+        const co = b.compactObject as Record<string, unknown>;
+        if (obs.lat == null || obs.lon == null || obs.alt_m == null || !obs.body) return null;
+        if (!co.kind || co.massSolar == null || co.distanceLy == null) return null;
+        return {
+            observer: {
+                lat: Number(obs.lat),
+                lon: Number(obs.lon),
+                alt_m: Number(obs.alt_m),
+                body: (obs.body as 'earth' | 'mars' | 'custom') || 'earth',
+                unixTime_s: obs.unixTime_s != null ? Number(obs.unixTime_s) : undefined
+            },
+            compactObject: {
+                kind: co.kind as QetTransferRequest['compactObject']['kind'],
+                massSolar: Number(co.massSolar),
+                distanceLy: Number(co.distanceLy),
+                ra_deg: co.ra_deg != null ? Number(co.ra_deg) : undefined,
+                dec_deg: co.dec_deg != null ? Number(co.dec_deg) : undefined,
+                redshift_z: co.redshift_z != null ? Number(co.redshift_z) : undefined
+            },
+            powerDemand_W_SIM: Number(b.powerDemand_W_SIM ?? 0),
+            fieldRadius_m: Number(b.fieldRadius_m ?? 1e6),
+            qetEfficiencyHint: b.qetEfficiencyHint != null ? Number(b.qetEfficiencyHint) : undefined
+        };
+    }
+
+    router.post('/qet/gamma-budget', (req: Request, res: Response) => {
+        const parsed = parseQetBody(req.body);
+        if (!parsed) {
+            res.status(400).json({
+                error: 'observer (lat,lon,alt_m,body), compactObject (kind,massSolar,distanceLy), powerDemand_W_SIM, fieldRadius_m required'
+            });
+            return;
+        }
+        const result = computeQetGammaBudget(parsed, { narrativeYamma: false });
+        res.json({ simulation: true, gammaBudget: result });
+    });
+
+    router.post('/qet/gamma-transfer', (req: Request, res: Response) => {
+        const parsed = parseQetBody(req.body);
+        if (!parsed) {
+            res.status(400).json({
+                error: 'observer (lat,lon,alt_m,body), compactObject (kind,massSolar,distanceLy), powerDemand_W_SIM, fieldRadius_m required'
+            });
+            return;
+        }
+        const label = req.body?.label === 'yamma' ? 'yamma' : undefined;
+        const result = computeQetGammaBudget(parsed, { narrativeYamma: label === 'yamma' });
+        res.json({
+            simulation: true,
+            label: label ?? 'gamma',
+            gammaBudget: result
+        });
+    });
+
+    /** GER: Galactic Energy Relay — entangled BEC ring toy (simulation only). */
+    router.post('/ger/bec/register', (req: Request, res: Response) => {
+        const z = parseZoneFromBody((req.body || {}) as Record<string, unknown>);
+        if (!z) {
+            res.status(400).json({
+                error:
+                    'id, location, radiation (Gamma|X-Ray), densityGradient, vortexSpinRate, buffer.capacity, buffer.currentLoad, buffer.decayRate, quantumMetrics required'
+            });
+            return;
+        }
+        gerBec.registerZone(z as EntangledBECZone);
+        res.status(201).json({
+            simulation: true,
+            protocol: 'GER_0.1a',
+            zone: zoneToJsonSafe(z),
+            loopState: gerBec.getLoopState(z.id)
+        });
+    });
+
+    router.get('/ger/bec/zones', (_req: Request, res: Response) => {
+        const zones = gerBec.listZones().map((z) => ({
+            ...zoneToJsonSafe(z),
+            loopState: gerBec.getLoopState(z.id),
+            entangledPeerId: gerBec.getEntanglementPeer(z.id) ?? null
+        }));
+        res.json({ simulation: true, protocol: 'GER_0.1a', zones });
+    });
+
+    router.post('/ger/bec/entangle', (req: Request, res: Response) => {
+        const { localId, remoteId } = (req.body || {}) as Record<string, unknown>;
+        if (!localId || !remoteId) {
+            res.status(400).json({ error: 'localId and remoteId required' });
+            return;
+        }
+        const local = gerBec.getZone(String(localId));
+        const remote = gerBec.getZone(String(remoteId));
+        if (!local || !remote) {
+            res.status(404).json({ error: 'one or both zones not registered' });
+            return;
+        }
+        const ok = gerBec.establishEntanglementLink(local, remote);
+        res.json({
+            simulation: true,
+            protocol: 'GER_0.1a',
+            linked: ok,
+            localId: String(localId),
+            remoteId: String(remoteId)
+        });
+    });
+
+    router.post('/ger/bec/discharge', async (req: Request, res: Response) => {
+        const { zoneId, targetOutput } = (req.body || {}) as Record<string, unknown>;
+        if (!zoneId || targetOutput == null) {
+            res.status(400).json({ error: 'zoneId and targetOutput required' });
+            return;
+        }
+        if (!gerBec.getZone(String(zoneId))) {
+            res.status(404).json({ error: 'zone not found' });
+            return;
+        }
+        await gerBec.triggerDischarge(String(zoneId), Number(targetOutput));
+        const z = gerBec.getZone(String(zoneId))!;
+        res.json({
+            simulation: true,
+            protocol: 'GER_0.1a',
+            zone: zoneToJsonSafe(z),
+            loopState: gerBec.getLoopState(String(zoneId))
+        });
+    });
+
+    router.post('/ger/bec/thermal', (req: Request, res: Response) => {
+        const { zoneId } = (req.body || {}) as Record<string, unknown>;
+        if (!zoneId) {
+            res.status(400).json({ error: 'zoneId required' });
+            return;
+        }
+        if (!gerBec.getZone(String(zoneId))) {
+            res.status(404).json({ error: 'zone not found' });
+            return;
+        }
+        gerBec.manageThermalEquilibrium(String(zoneId));
+        const z = gerBec.getZone(String(zoneId))!;
+        res.json({
+            simulation: true,
+            protocol: 'GER_0.1a',
+            zone: zoneToJsonSafe(z),
+            loopState: gerBec.getLoopState(String(zoneId))
+        });
+    });
+
+    return { router, lifecycle };
 }

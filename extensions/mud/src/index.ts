@@ -17,7 +17,7 @@ import { HistoryManager } from './history-manager';
 import { WiFiManagerWDUtil } from './wifi-wdutil';
 import { TokenTracker } from './token-tracker';
 import { loadApiKeysFromFile, getApiKey } from './api-key-loader';
-import { createQuantumRouter } from './quantum/quantum-routes';
+import { createQuantumRouter, type QuantumRouterLifecycle } from './quantum/quantum-routes';
 import * as path from 'path';
 
 interface AIUser {
@@ -85,6 +85,7 @@ class MUDServer {
         originalResponse: string;
         credits: number;
     }> = new Map();
+    private quantumSpectralLifecycle: QuantumRouterLifecycle | null = null;
 
     constructor() {
         // Initialize Ollama configuration
@@ -691,12 +692,11 @@ class MUDServer {
         this.app.use(express.static(path.join(__dirname, '../public')));
         this.app.use(express.json({ limit: '2mb' }));
 
-        this.app.use(
-            '/api/quantum',
-            createQuantumRouter({
-                openai: this.openai
-            })
-        );
+        const quantumBundle = createQuantumRouter({
+            openai: this.openai
+        });
+        this.quantumSpectralLifecycle = quantumBundle.lifecycle;
+        this.app.use('/api/quantum', quantumBundle.router);
 
         this.app.get('/health', (_req: Request, res: Response) => {
             res.json({ status: 'ok' });
@@ -2175,6 +2175,11 @@ When you want to communicate with another AI, simply output the command in the f
     public start(port: number = 3001) {
         this.server.listen(port, () => {
             console.log(`MUD server running on port ${port}`);
+            try {
+                this.quantumSpectralLifecycle?.startSpectralWatchdogCron();
+            } catch (e) {
+                console.error('spectral watchdog cron start failed', e);
+            }
         });
     }
 }

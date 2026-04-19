@@ -7,10 +7,19 @@ import type OpenAI from 'openai';
 /** Default `fieldStabilization` when omitted on create (explicit enable required for gated ops). */
 export const DEFAULT_FIELD_STABILIZATION = false;
 
+export interface TeleportationHoldState {
+    active: boolean;
+    reason?: string;
+    since?: number;
+}
+
 export class QuantumZoneService {
     private readonly analyzer = new StabilityZoneAnalyzer();
     private readonly zones = new Map<string, QuantumZoneRecord>();
     private readonly llm: ZoneLlmAdvisor;
+    /** Software simulation: halts teleportation / tunneling-style ops for all zones when active. */
+    private globalTeleportHold: TeleportationHoldState = { active: false };
+    private readonly zoneTeleportHold = new Map<string, TeleportationHoldState>();
 
     constructor(openai: OpenAI | null) {
         this.llm = new ZoneLlmAdvisor(openai);
@@ -100,6 +109,57 @@ export class QuantumZoneService {
         return next;
     }
 
+    setGlobalTeleportationHold(active: boolean, reason?: string): void {
+        this.globalTeleportHold = {
+            active,
+            reason,
+            since: active ? Date.now() : undefined
+        };
+    }
+
+    getGlobalTeleportationHold(): TeleportationHoldState {
+        return { ...this.globalTeleportHold };
+    }
+
+    setZoneTeleportationHold(zoneId: string, active: boolean, reason?: string): void {
+        if (!active) {
+            this.zoneTeleportHold.delete(zoneId);
+            return;
+        }
+        this.zoneTeleportHold.set(zoneId, {
+            active: true,
+            reason,
+            since: Date.now()
+        });
+    }
+
+    getZoneTeleportationHold(zoneId: string): TeleportationHoldState | null {
+        const h = this.zoneTeleportHold.get(zoneId);
+        return h ? { ...h } : null;
+    }
+
+    /**
+     * Blocks teleportation / tunneling when global or per-zone simulation hold is active.
+     */
+    assertTeleportationAllowed(zoneId?: string): { ok: true } | { ok: false; message: string } {
+        if (this.globalTeleportHold.active) {
+            return {
+                ok: false,
+                message: `Teleportation suspended (global): ${this.globalTeleportHold.reason || 'hold active'}`
+            };
+        }
+        if (zoneId) {
+            const zh = this.zoneTeleportHold.get(zoneId);
+            if (zh?.active) {
+                return {
+                    ok: false,
+                    message: `Teleportation suspended for zone: ${zh.reason || 'hold active'}`
+                };
+            }
+        }
+        return { ok: true };
+    }
+
     assertFieldStabilized(zoneId: string): { ok: true; zone: QuantumZoneRecord } | { ok: false; message: string } {
         const z = this.zones.get(zoneId);
         if (!z) return { ok: false, message: 'zone not found' };
@@ -116,6 +176,10 @@ export class QuantumZoneService {
         zoneId: string,
         vol: Omit<TransmutationVolume, 'id'> & { id?: string }
     ): Promise<{ ok: true; volume: TransmutationVolume } | { ok: false; status: number; message: string }> {
+        const tele = this.assertTeleportationAllowed(zoneId);
+        if (!tele.ok) {
+            return { ok: false, status: 403, message: tele.message };
+        }
         const gate = this.assertFieldStabilized(zoneId);
         if (!gate.ok) {
             return { ok: false, status: 422, message: gate.message };

@@ -45,3 +45,27 @@ describe('stable element table', () => {
         expect(s).toContain('H');
     });
 });
+
+describe('QuantumZoneService teleportation hold', () => {
+    it('assertTeleportationAllowed fails when global hold active', () => {
+        const svc = new QuantumZoneService(null);
+        svc.setGlobalTeleportationHold(true, 'spectral_test');
+        const g = svc.assertTeleportationAllowed();
+        expect(g.ok).toBe(false);
+        if (!g.ok) expect(g.message).toContain('global');
+    });
+
+    it('assertTeleportationAllowed fails when zone hold active', async () => {
+        const svc = new QuantumZoneService(null);
+        const zone = await svc.createZone({
+            name: 'z',
+            galacticPosition: { systemId: 'sol' },
+            gps: { lat: 0, lon: 0, alt_m: 0, body: 'earth' },
+            cameraData: { resolution: '1080p', frameRate: 30, quantumSensitivity: 0.9 }
+        });
+        svc.setZoneTeleportationHold(zone.id, true, 'manual');
+        const g = svc.assertTeleportationAllowed(zone.id);
+        expect(g.ok).toBe(false);
+        if (!g.ok) expect(g.message).toContain('zone');
+    });
+});

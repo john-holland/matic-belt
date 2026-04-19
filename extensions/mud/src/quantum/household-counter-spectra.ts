@@ -38,7 +38,12 @@ export class HouseholdCounterSpectra {
         anomalyReport: { hasAnomalies: boolean; anomalies: string[]; confidence: number };
     }> {
         const notes: string[] = ['simulation: not laboratory spectroscopy'];
-        const anomalyReport = await this.spectro.analyzeSpectrography(input.spectrum);
+        const ar = await this.spectro.analyzeSpectrography(input.spectrum);
+        const anomalyReport = {
+            hasAnomalies: ar.hasAnomalies,
+            anomalies: ar.anomalies,
+            confidence: ar.confidence
+        };
 
         let inv: Record<string, Record<string, number>> =
             input.inventoryMaterials && input.inventoryMaterials.length

@@ -15,14 +15,12 @@ interface AnnealingResult {
 export class QuantumAnnealer {
     private currentTemperature: number;
     private currentEnergy: number;
-    private currentState: any;
     private bestState: any;
     private bestEnergy: number;
 
     constructor() {
         this.currentTemperature = 0;
         this.currentEnergy = 0;
-        this.currentState = null;
         this.bestState = null;
         this.bestEnergy = Infinity;
     }
@@ -44,7 +42,6 @@ export class QuantumAnnealer {
             // Apply quantum fluctuations
             const deltaE = newEnergy - this.currentEnergy;
             if (this.shouldAcceptState(deltaE)) {
-                this.currentState = newState;
                 this.currentEnergy = newEnergy;
 
                 if (newEnergy < this.bestEnergy) {
@@ -107,7 +104,7 @@ export class QuantumAnnealer {
     /**
      * Calculate energy of a state
      */
-    private calculateEnergy(state: any): number {
+    private calculateEnergy(_state: any): number {
         // This would normally use quantum computing
         // For now, return a random energy
         return Math.random();

@@ -16,6 +16,7 @@ import { startSpectralWatchdogCronIfEnabled } from './spectral-watchdog-cron';
 import { computeQetGammaBudget, type QetTransferRequest } from './qet-gamma-toy';
 import {
     createGerBecRingToyController,
+    parseFailSafeFromBody,
     parseZoneFromBody,
     zoneToJsonSafe,
     type EntangledBECZone
@@ -559,6 +560,60 @@ export function createQuantumRouter(deps: QuantumRouterDeps): QuantumRouterBundl
         res.json({
             simulation: true,
             protocol: 'GER_0.1a',
+            zone: zoneToJsonSafe(z),
+            loopState: gerBec.getLoopState(String(zoneId))
+        });
+    });
+
+    router.post('/ger/bec/failsafe', (req: Request, res: Response) => {
+        const { zoneId, ventingTrajectory, criticalContainmentThreshold } = (req.body || {}) as Record<
+            string,
+            unknown
+        >;
+        if (!zoneId || !ventingTrajectory || criticalContainmentThreshold == null) {
+            res.status(400).json({
+                error: 'zoneId, ventingTrajectory ([x,y,z] or {x,y,z}), criticalContainmentThreshold (0-1) required'
+            });
+            return;
+        }
+        const fsBody = {
+            ventingTrajectory,
+            criticalContainmentThreshold
+        } as Record<string, unknown>;
+        const partial = parseFailSafeFromBody(fsBody);
+        if (!partial) {
+            res.status(400).json({ error: 'invalid failsafe payload' });
+            return;
+        }
+        if (!gerBec.setFailSafe(String(zoneId), partial)) {
+            res.status(404).json({ error: 'zone not found' });
+            return;
+        }
+        res.json({
+            simulation: true,
+            protocol: 'GER_0.1a',
+            zoneId: String(zoneId),
+            failSafe: gerBec.getFailSafe(String(zoneId))
+        });
+    });
+
+    router.post('/ger/bec/emergency-vent', (req: Request, res: Response) => {
+        const { zoneId } = (req.body || {}) as Record<string, unknown>;
+        if (!zoneId) {
+            res.status(400).json({ error: 'zoneId required' });
+            return;
+        }
+        const mech = gerBec.getFailSafeMechanism(String(zoneId));
+        if (!mech) {
+            res.status(422).json({ error: 'no failsafe configured for zone' });
+            return;
+        }
+        const vent = mech.emergencyVent();
+        const z = gerBec.getZone(String(zoneId))!;
+        res.json({
+            simulation: true,
+            protocol: 'GER_0.1a',
+            vent,
             zone: zoneToJsonSafe(z),
             loopState: gerBec.getLoopState(String(zoneId))
         });

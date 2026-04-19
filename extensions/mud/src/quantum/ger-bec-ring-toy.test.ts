@@ -61,4 +61,51 @@ describe('GerBecRingToyController', () => {
         c.manageThermalEquilibrium('T');
         expect(c.getZone('T')!.buffer.currentLoad < 100n).toBe(true);
     });
+
+    it('does not vent when fill is below critical failsafe threshold', () => {
+        const c = new GerBecRingToyController();
+        const z = gammaZone('V', {
+            buffer: { capacity: 1000n, currentLoad: 800n, decayRate: 0 },
+            failSafe: { ventingTrajectory: [0, 1, 0], criticalContainmentThreshold: 0.92 }
+        });
+        c.registerZone(z);
+        const mech = c.getFailSafeMechanism('V')!;
+        const r = mech.emergencyVent();
+        expect(r.isVenting).toBe(false);
+        expect(r.remainingEnergy).toBe(800n);
+        expect(r.exhaustLuminosity).toBe(0);
+    });
+
+    it('vents when fill is at or above critical failsafe threshold', () => {
+        const c = new GerBecRingToyController();
+        const z = gammaZone('W', {
+            buffer: { capacity: 1000n, currentLoad: 950n, decayRate: 0 },
+            failSafe: { ventingTrajectory: [0, 1, 0], criticalContainmentThreshold: 0.92 }
+        });
+        c.registerZone(z);
+        const r = c.getFailSafeMechanism('W')!.emergencyVent();
+        expect(r.isVenting).toBe(true);
+        expect(r.remainingEnergy).toBeLessThan(950n);
+        expect(r.exhaustLuminosity).toBeGreaterThan(0);
+        expect(Number(c.getZone('W')!.buffer.currentLoad)).toBe(Number(r.remainingEnergy));
+    });
+
+    it('returns null mechanism when zone has no failsafe', () => {
+        const c = new GerBecRingToyController();
+        c.registerZone(gammaZone('N'));
+        expect(c.getFailSafeMechanism('N')).toBeNull();
+    });
+
+    it('runs ensure vent after discharge if still past threshold', async () => {
+        const c = new GerBecRingToyController();
+        c.registerZone(
+            gammaZone('D', {
+                buffer: { capacity: 1000n, currentLoad: 950n, decayRate: 0 },
+                failSafe: { ventingTrajectory: [0, 1, 0], criticalContainmentThreshold: 0.5 }
+            })
+        );
+        await c.triggerDischarge('D', 10);
+        // 940n still above 0.5 threshold → vent down to ~38% capacity (380n).
+        expect(c.getZone('D')!.buffer.currentLoad).toBe(380n);
+    });
 });
